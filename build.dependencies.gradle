@@ -1,0 +1,17 @@
+repositories {
+    mavenCentral()
+    google() // Needed for androidx
+}
+
+dependencies {
+    implementation project(':Inspection')
+    implementation project(':Blocks')
+    implementation project(':RobotCore')
+    implementation project(':RobotServer')
+    implementation project(':OnBotJava')
+    implementation project(':Hardware')
+    implementation project(':FtcCommon')
+    implementation project(':Vision')
+    implementation 'androidx.appcompat:appcompat:1.2.0'
+}
+

@@ -1,0 +1,23 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'org.firstinspires.inspection'
+    compileSdkVersion 30
+    defaultConfig {
+        minSdkVersion 24
+        targetSdkVersion 28
+    }
+    buildFeatures { buildConfig = false }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    api project(':Hardware')
+    api project(':RobotCore')
+    api 'com.journeyapps:zxing-android-embedded:4.3.0'
+    api 'io.github.ehn-digital-green-development:base45:0.0.3'
+    api fileTree(dir: 'libs', include: ['*.jar'])
+}

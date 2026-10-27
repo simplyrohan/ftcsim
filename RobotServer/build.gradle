@@ -1,0 +1,21 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'org.firstinspires.ftc.robotcore.internal.webserver'
+    compileSdkVersion 30
+    defaultConfig {
+        minSdkVersion 24
+        targetSdkVersion 28
+    }
+    buildFeatures { buildConfig = false }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    api project(':RobotCore')
+    api 'androidx.appcompat:appcompat:1.2.0'
+    api fileTree(dir: 'libs', include: ['*.jar'])
+}
