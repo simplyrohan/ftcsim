@@ -227,15 +227,23 @@ def main():
     parser.add_argument('--lynx-port', type=int, default=9015)
     parser.add_argument('--no-build', action='store_true')
     args = parser.parse_args()
-    if not args.no_build:
-        subprocess.run([str(ROOT.parent/'gradlew'), '-p', str(ROOT), 'writeClasspath', '--console=plain'], check=True, cwd=ROOT.parent)
-    classpath = (ROOT/'build/classpath.txt').read_text()
+    if (ROOT/'lib').is_dir():
+        # The installed package is self-contained: no Gradle or source checkout.
+        def priority(path):
+            return (0 if path.name.startswith('ftcsim-driver-') else
+                    1 if path.name.startswith('ftc-sdk-jvm-') else 2, path.name)
+        classpath = os.pathsep.join(str(jar) for jar in sorted((ROOT/'lib').glob('*.jar'), key=priority))
+    else:
+        if not args.no_build:
+            subprocess.run([str(ROOT.parent/'gradlew'), '-p', str(ROOT.parent),
+                            ':simulator:writeClasspath', '--console=plain'], check=True, cwd=ROOT.parent)
+        classpath = (ROOT/'build/classpath.txt').read_text()
     sim = Simulation(args.lynx_port)
     http = ThreadingHTTPServer(('127.0.0.1', args.port), Api);http.sim = sim
     threading.Thread(target=sim.serve_forever, daemon=True).start()
     threading.Thread(target=http.serve_forever, daemon=True).start()
-    child = subprocess.Popen(['java', '-cp', classpath, 'ftcsim.jvm.BioBuzzRunner', str(args.port), str(args.lynx_port)], cwd=ROOT)
-    print(f'BioBuzz simulator: http://127.0.0.1:{args.port}', flush=True)
+    child = subprocess.Popen(['java', '-cp', classpath, 'ftcsim.jvm.BioBuzzRunner', str(http.server_address[1]), str(sim.server_address[1])], cwd=ROOT)
+    print(f'BioBuzz simulator: http://127.0.0.1:{http.server_address[1]}', flush=True)
     print('Open the dashboard, then INIT and START. Ctrl-C stops the runtime.', flush=True)
     try:
         while child.poll() is None: time.sleep(.2)

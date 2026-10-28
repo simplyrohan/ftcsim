@@ -1,0 +1,78 @@
+plugins { id 'java'; id 'application' }
+apply from: rootProject.file('gradle/jvm-dependencies.gradle')
+group = 'org.ftcsim'
+version = rootProject.version
+base { archivesName = 'ftcsim-driver' }
+configurations { kotlinCompiler }
+// The SDK already supplies AndroidX. Do not package a second version from a
+// robot-library POM alongside it.
+configurations.sdkLibraries.exclude group: 'androidx.core'
+configurations.sdkLibraries.exclude group: 'androidx.annotation'
+dependencies {
+    implementation project(':sdk')
+    implementation libraryJars
+    sdkLibraries 'com.pedropathing:revhub:3.0.2'
+    sdkLibraries 'org.solverslib:core:0.3.6'
+    sdkLibraries 'com.bylazar:configurables:1.0.3'
+    kotlinCompiler 'org.jetbrains.kotlin:kotlin-compiler-embeddable:2.3.21'
+}
+java { sourceCompatibility = JavaVersion.VERSION_1_8; targetCompatibility = JavaVersion.VERSION_1_8 }
+tasks.named('compileJava') { options.release = 8; options.encoding = 'UTF-8' }
+application {
+    applicationName = 'ftcsim'
+    mainClass = 'ftcsim.jvm.SmokeTest'
+    applicationDefaultJvmArgs = ['-Dftcsim.jvm=true']
+}
+// Build the isolated BioBuzz snapshot; never reach into the original checkout.
+sourceSets.main.java.srcDir('biobuzz/TeamCode/src/main/java')
+sourceSets.main.java.exclude('**/pedro/Tuning.java', '**/pedro/procedures/**')
+def bioKotlin = fileTree('biobuzz/TeamCode/src/main/java') {
+    include '**/*.kt'
+    exclude '**/opmodes/Auto.kt', '**/opmodes/ShooterTuning.kt'
+}
+def kotlinOutput = layout.buildDirectory.dir('classes/kotlin/biobuzz')
+tasks.register('compileBioBuzzKotlin', JavaExec) {
+    dependsOn 'compileJava'
+    classpath = configurations.kotlinCompiler
+    mainClass = 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler'
+    inputs.files(bioKotlin, sourceSets.main.compileClasspath, sourceSets.main.output.classesDirs)
+    outputs.dir(kotlinOutput)
+    doFirst {
+        delete kotlinOutput
+        kotlinOutput.get().asFile.mkdirs()
+        args = ['-no-stdlib', '-no-reflect', '-jvm-target', '1.8', '-classpath',
+                (sourceSets.main.compileClasspath + sourceSets.main.output.classesDirs).asPath,
+                '-d', kotlinOutput.get().asFile.absolutePath] + bioKotlin.files.collect { it.absolutePath }
+    }
+}
+tasks.named('classes') { dependsOn 'compileBioBuzzKotlin' }
+sourceSets.main.runtimeClasspath += files(kotlinOutput)
+tasks.named('jar') {
+    dependsOn 'compileBioBuzzKotlin'
+    from kotlinOutput
+    from(rootProject.file('LICENSE')) { into 'META-INF'; rename { 'LICENSE' } }
+    from('biobuzz/LICENSE') { into 'META-INF'; rename { 'BIOBUZZ-LICENSE' } }
+}
+tasks.register('writeClasspath') {
+    dependsOn 'classes', ':sdk:jar'
+    doLast { file('build/classpath.txt').text = sourceSets.main.runtimeClasspath.asPath }
+}
+distributions {
+    main {
+        distributionBaseName = 'ftcsim'
+        contents {
+            from('python') { into 'python'; exclude '__pycache__/**', 'test_*.py' }
+            from('biobuzz') { into 'biobuzz' }
+            from('bin/biobuzz') { into 'bin'; filePermissions { unix('rwxr-xr-x') } }
+            from 'README.md'
+            from rootProject.file('LICENSE')
+            from(rootProject.file('sdk/LICENSE')) { rename { 'SDK-LICENSE' } }
+        }
+    }
+}
+tasks.register('bridgeTest', Exec) {
+    dependsOn 'writeClasspath', 'installDist'
+    environment 'PYTHONDONTWRITEBYTECODE', '1'
+    commandLine 'python3', '-m', 'unittest', 'discover', '-s', 'python', '-v'
+}
+tasks.named('check') { dependsOn 'bridgeTest' }

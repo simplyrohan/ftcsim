@@ -34,7 +34,7 @@ class ServerTests(unittest.TestCase):
 
     def test_installed_distribution(self):
         root = Path(__file__).resolve().parents[1]
-        result = subprocess.run([str(root/'build/install/ftcsim-jvm/bin/ftcsim-jvm'), str(self.server.server_address[1])],
+        result = subprocess.run([str(root/'build/install/ftcsim/bin/ftcsim'), str(self.server.server_address[1])],
                                 capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('JVM -> Python -> SDK OK', result.stdout)
@@ -90,7 +90,7 @@ class ServerTests(unittest.TestCase):
     def test_jvm_sdk_end_to_end(self):
         root = Path(__file__).resolve().parents[1]
         cp = root/'build/classpath.txt'
-        self.assertTrue(cp.exists(), 'Run ./gradlew -p native-jvm writeClasspath first')
+        self.assertTrue(cp.exists(), 'Run ./gradlew :simulator:writeClasspath first')
         # Run outside Gradle/Android and make Python's response observably different.
         seen = []
         def interceptor(req, state):

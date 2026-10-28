@@ -1,31 +1,14 @@
-/**
- * Top-level build file for ftc_app project.
- *
- * It is extraordinarily rare that you will ever need to edit this file.
- */
+plugins { id 'base' }
+version = '0.1.0'
 
-buildscript {
-    repositories {
-        mavenCentral()
-        google()
-    }
-}
-
-plugins {
-    // Note for FTC Teams: Do not modify this yourself.
-    id 'com.android.application' version '8.13.2' apply false
-    id 'com.android.library' version '8.13.2' apply false
-}
-
-// This is now required because aapt2 has to be downloaded from the
-// google() repository beginning with version 3.2 of the Android Gradle Plugin
-allprojects {
-    repositories {
-        mavenCentral()
-        google()
-    }
-}
-
-repositories {
-    mavenCentral()
+tasks.named('build') { dependsOn ':sdk:build', ':simulator:build' }
+tasks.named('check') { dependsOn ':sdk:check', ':simulator:check' }
+tasks.named('clean') { dependsOn ':sdk:clean', ':simulator:clean' }
+tasks.register('packageAll', Sync) {
+    group = 'distribution'
+    description = 'Package the standalone JVM SDK and runnable simulator distributions.'
+    dependsOn ':sdk:distZip', ':simulator:distZip'
+    from('sdk/jvm/build/distributions') { include 'ftc-sdk-jvm-*.zip' }
+    from('simulator/build/distributions') { include 'ftcsim-*.zip' }
+    into layout.buildDirectory.dir('distributions')
 }

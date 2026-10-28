@@ -34,7 +34,7 @@ for module in modules:
                 for val in elem.attrib.values():
                     if val.startswith('@+id/'): add('id',val[5:])
 # appcompat fields referenced directly by SDK code are compile-time only.
-output = root/'native-jvm/build/generated'
+output = root/'jvm/build/generated/sdkResources'
 output.mkdir(parents=True,exist_ok=True)
 packages = ['com.qualcomm.robotcore','com.qualcomm.hardware','org.firstinspires.inspection','org.firstinspires.ftc.robotcore.internal.webserver','com.qualcomm.ftccommon','org.firstinspires.ftc.vision','org.firstinspires.ftc.apriltag','com.google.blocks','com.google.blocks.ftcrobotcontroller.onbotjava']
 index=1

@@ -1,0 +1,65 @@
+plugins { id 'java-library'; id 'distribution' }
+apply from: rootProject.file('gradle/jvm-dependencies.gradle')
+group = 'org.ftcsim'
+version = '12.0.0'
+base { archivesName = 'ftc-sdk-jvm' }
+
+def modules = ['RobotCore', 'RobotServer', 'Hardware', 'Inspection', 'FtcCommon', 'Vision', 'Blocks', 'OnBotJava']
+def bundled = files(modules.collect {
+    fileTree("../${it}/libs").matching { include '*.jar'; exclude 'slf4j-handroid*' }
+})
+dependencies {
+    sdkLibraries 'org.robolectric:android-all:11-robolectric-6757853'
+    sdkLibraries 'androidx.appcompat:appcompat:1.2.0'
+    sdkLibraries 'com.jakewharton.threetenabp:threetenabp:1.3.1'
+    sdkLibraries 'org.openftc:easyopencv:1.7.3'
+    sdkLibraries 'org.openftc:apriltag:2.1.0'
+    sdkLibraries 'com.journeyapps:zxing-android-embedded:4.3.0'
+    sdkLibraries 'io.github.ehn-digital-green-development:base45:0.0.3'
+    sdkLibraries 'com.android.tools:r8:8.5.35'
+    api libraryJars
+    api bundled
+}
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+    withSourcesJar()
+}
+sourceSets.main.java.srcDirs = ['src/main/java', 'build/generated/sdkResources'] + modules.collect { "../${it}/src/main/java" }
+sourceSets { desktop { java.srcDirs = ['src/desktop/java'] } }
+// Compile Android-facing upstream code against android-all first, then compile
+// the small desktop adapter classes separately so they cannot hide Android APIs
+// from the upstream compiler. Both sets are packaged into the SDK JAR.
+sourceSets.desktop.compileClasspath = sourceSets.main.compileClasspath + files('build/classes/java/main')
+tasks.register('generateResources', Exec) {
+    commandLine 'python3', 'tools/resources.py'
+    inputs.files(modules.collect { fileTree("../${it}/src/main/res") })
+    inputs.file('tools/resources.py')
+    outputs.dir('build/generated/sdkResources')
+}
+tasks.named('compileJava') { dependsOn 'generateResources'; options.encoding = 'UTF-8'; options.release = 8 }
+tasks.named('compileDesktopJava') { dependsOn 'compileJava'; options.release = 8 }
+tasks.named('classes') { dependsOn 'desktopClasses' }
+tasks.named('jar') {
+    from sourceSets.desktop.output
+    from('../LICENSE') { into 'META-INF'; rename { 'FTC-SDK-LICENSE' } }
+    manifest { attributes 'Implementation-Title': 'FTC SDK for desktop JVM', 'Implementation-Version': version }
+}
+tasks.named('sourcesJar') {
+    dependsOn 'classes'
+    from sourceSets.desktop.allSource
+    from('../LICENSE') { into 'META-INF'; rename { 'FTC-SDK-LICENSE' } }
+}
+distributions {
+    main {
+        distributionBaseName = 'ftc-sdk-jvm'
+        contents {
+            into('lib') { from tasks.named('jar'); from libraryJars; from bundled }
+            into('sources') { from tasks.named('sourcesJar') }
+            from '../LICENSE'
+            from '../README.md'
+            from '../EXTRACTED-SDK.md'
+            from('README.md') { rename { 'JVM.md' } }
+        }
+    }
+}

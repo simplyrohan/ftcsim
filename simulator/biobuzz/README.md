@@ -48,7 +48,7 @@ they are distinct from the TeleOp's existing controller bindings.
 
 The dashboard shows all 8 motors and 4 servos, activity, signed applied power,
 encoder ticks and velocity, servo PWM, a simple moving robot pose, and recent
-Lynx writes/errors. The complete wire log is `native-jvm/build/biobuzz-wire.jsonl`.
+Lynx writes/errors. The complete wire log is `simulator/build/biobuzz-wire.jsonl`.
 User controls never write motor state directly: the copied Kotlin OpMode (or an
 explicit diagnostic action) must issue SDK calls to produce output.
 
@@ -117,7 +117,7 @@ subsystem activation debugging, not validating PID gains or match trajectories.
 ## Checks
 
 ```sh
-./gradlew -p native-jvm build installDist
+./gradlew :simulator:build :simulator:installDist
 ```
 
 This compiles the extracted SDK, real Pedro/SolversLib dependencies, and the

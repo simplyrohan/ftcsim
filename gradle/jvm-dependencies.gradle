@@ -1,0 +1,42 @@
+// Maven AARs contain ordinary class JARs too. Extract those for JVM compilation;
+// desktop builds never load the Android native libraries in those artifacts.
+repositories {
+    mavenCentral { metadataSources { mavenPom(); artifact(); ignoreGradleMetadataRedirection() } }
+    google { metadataSources { mavenPom(); artifact(); ignoreGradleMetadataRedirection() } }
+    maven {
+        url 'https://repo.dairy.foundation/releases/'
+        content { includeGroup 'com.pedropathing'; includeGroup 'org.solverslib' }
+        metadataSources { mavenPom(); artifact(); ignoreGradleMetadataRedirection() }
+    }
+    maven {
+        url 'https://mymaven.bylazar.com/releases'
+        content { includeGroup 'com.bylazar' }
+        metadataSources { mavenPom(); artifact(); ignoreGradleMetadataRedirection() }
+    }
+}
+configurations { sdkLibraries }
+def prepared = layout.buildDirectory.dir('dependencies')
+tasks.register('prepareLibraries') {
+    inputs.files(configurations.sdkLibraries)
+    outputs.dir(prepared)
+    doLast {
+        delete prepared
+        def out = prepared.get().asFile
+        out.mkdirs()
+        configurations.sdkLibraries.files.each { artifact ->
+            if (artifact.name.endsWith('.aar')) {
+                zipTree(artifact).matching { include 'classes.jar', 'libs/*.jar' }.files.each { nestedJar ->
+                    copy {
+                        from nestedJar
+                        into out
+                        rename { artifact.name.replace('.aar', '') + '-' + nestedJar.name }
+                    }
+                }
+            } else {
+                copy { from artifact; into out }
+            }
+        }
+    }
+}
+ext.libraryJars = files(provider { fileTree(prepared).matching { include '**/*.jar' } })
+    .builtBy(tasks.named('prepareLibraries'))

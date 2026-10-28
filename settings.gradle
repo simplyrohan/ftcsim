@@ -1,12 +1,3 @@
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
-}
-
-include ':FtcRobotController'
-include ':TeamCode'
-
-include ':RobotCore', ':RobotServer', ':Hardware', ':Inspection', ':FtcCommon', ':Vision', ':Blocks', ':OnBotJava'
+rootProject.name = 'ftcsim'
+include 'sdk', 'simulator'
+project(':sdk').projectDir = file('sdk/jvm')
