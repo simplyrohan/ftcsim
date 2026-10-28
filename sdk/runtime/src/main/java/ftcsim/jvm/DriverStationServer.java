@@ -71,7 +71,11 @@ final class DriverStationServer extends NanoWSD {
                 JsonObject data = new JsonParser().parse(text).getAsJsonObject();
                 if (owner != this) throw new IllegalArgumentException("Observer connection; reconnect after controller disconnects");
                 String type = data.get("type").getAsString();
-                if (type.equals("heartbeat")) { lastInput = System.nanoTime(); return; }
+                // A controller issuing INIT/START after an idle period is alive,
+                // even before its next gamepad frame. Refresh on receipt so queued
+                // commands do not inherit an expired heartbeat from the last run.
+                lastInput = System.nanoTime();
+                if (type.equals("heartbeat")) return;
                 if (!commands.offer(new Command(this, data))) throw new IllegalArgumentException("Control queue full");
             } catch (RuntimeException e) {
                 JsonObject error = new JsonObject(); error.addProperty("type", "error"); error.addProperty("message", e.getMessage()); sendJson(error.toString());

@@ -71,11 +71,15 @@ Gamepad fields are four stick axes in [-1,1], two triggers in [0,1], and boolean
 `left_stick_button,right_stick_button,guide,start,back,touchpad`. SDK gamepad copy
 and serialization maintain the normal alias/edge behavior. Browser inputs are
 sent every 50 ms; the host event loop updates the SDK about every 20 ms.
+The browser also sends a separate heartbeat every 250 ms and immediately on
+focus/visibility restoration, so gamepad API failures do not interrupt liveness.
 
 After 500 ms without gamepad updates the SDK uses neutral inputs. After 1.5 s
-without valid gamepad/heartbeat messages, or immediately on controller disconnect,
+without controller messages, or immediately on controller disconnect,
 it stops the OpMode and disables outputs. An unresponsive OpMode causes the SDK
 to close the simulator transport and refuse another INIT until restarted.
+Controller commands refresh liveness when received, including INIT/START after
+STOP or an idle period. Stale gamepad input remains neutral independently.
 
 ## SDK → Browser
 
@@ -111,14 +115,14 @@ Velocities are robot-relative forward/left mm/s and counterclockwise rad/s.
 Values must be finite and bounded to ±10000 mm/s and ±100 rad/s. Omitted fields
 are zero. Applying motion requires a connected SDK and returns `ack`/`error`.
 Motion persists until changed or a hub failsafe, SDK STOP/disconnect, or valid
-reconfiguration clears it. This input is independent of motor output until a
-chassis model is implemented. Multiple browser connections see the same state.
+reconfiguration clears it. This input affects only sensors not connected to a mechanism; connected sensors
+consume their mechanism's calculated motion. Multiple browser connections see the same state.
 
 ## Browser-owned hardware configuration
 
 `GET /sim/driver-types` returns each built-in driver's label, connection type,
 port count, child connection/default rules, and constructor option metadata
-(labels, types, defaults, bounds, choices). The `/ds/hardware` page builds forms
+(labels, types, defaults, bounds, choices). The **Settings → Hardware map** modal builds forms
 from this catalog. Navigation uses the same SDK control connection.
 
 Hardware maps live in localStorage under
@@ -140,3 +144,17 @@ Import/export is entirely browser-side. Imported maps are structurally and
 semantically validated before localStorage is replaced; importing does not send
 `configure`. Applying still uses the same SDK message and inactive-state checks.
 Optional notes stay with local/file copies and are not sent to the SDK.
+
+## Simulator-only mechanisms
+
+`GET /sim/mechanism-types` exposes the mechanism registry's driver slots and
+constructor options. `POST /sim/mechanisms` accepts `{"mechanisms": [...]}` from
+the simulator origin and atomically validates/applies driver references. Success
+returns the physical snapshot; invalid configuration returns HTTP 400 and keeps
+the prior mechanisms. Snapshots on `/sim/drivers` and `/sim/state` additionally
+include `mechanisms` (live model state), `mechanism_configuration` (definitions),
+and `mechanism_error` (e.g. suspended bindings after a hardware-map replacement).
+
+This API is exclusively between the browser and Python. No mechanism messages or
+definitions cross the SDK transport or appear in the SDK HardwareMap. See
+[MECHANISMS.md](MECHANISMS.md) for the mecanum model and extension contract.

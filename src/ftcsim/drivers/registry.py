@@ -37,6 +37,10 @@ class DriverRegistry:
             if type(port) is not int or not 0 <= port < limit:
                 raise ValueError(f'Invalid {kind} hub port')
         options = definition.get('options', {})
+        if not isinstance(options, dict):
+            raise ValueError(f'Unknown options for {kind}')
+        if hasattr(cls, 'normalize_options'):
+            options = cls.normalize_options(options)
         parameters = inspect.signature(cls.__init__).parameters
         if not isinstance(options, dict) or options.keys() - (parameters.keys() - {'self', 'name', 'port'}):
             raise ValueError(f'Unknown options for {kind}')
@@ -69,7 +73,8 @@ class DriverRegistry:
             catalog.append(dict(type=kind, label=getattr(cls, 'display_name', kind),
                                 connection=cls.connection, ports=6 if cls.connection == 'servo' else 4,
                                 child_ports=cls.child_ports, child_connections=cls.child_connections,
-                                child_defaults=cls.child_defaults, options=options))
+                                child_defaults=cls.child_defaults, options=options,
+                                presets=getattr(cls, 'presets', ())))
         return catalog
 
 

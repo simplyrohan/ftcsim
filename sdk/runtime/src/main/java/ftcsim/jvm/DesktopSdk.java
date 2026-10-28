@@ -124,7 +124,7 @@ public final class DesktopSdk implements AutoCloseable {
         switch (type) {
             case "gamepads": {
                 Gamepad nextOne = gamepad(data.getAsJsonObject("gamepad1")), nextTwo = gamepad(data.getAsJsonObject("gamepad2"));
-                one = nextOne; two = nextTwo; lastGamepad = ds.lastInput = System.nanoTime(); break;
+                one = nextOne; two = nextTwo; lastGamepad = System.nanoTime(); break;
             }
             case "select":
                 requireInactive();

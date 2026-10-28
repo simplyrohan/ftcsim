@@ -17,9 +17,10 @@ ftcsim = "ftcsim.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+namespaces = false
 
 [tool.setuptools.dynamic]
 version = {attr = "ftcsim.__version__"}
 
 [tool.setuptools.package-data]
-ftcsim = ["ds/*.html", "ds/assets/*.js", "ds/assets/widgets/*.js", "templates/*.txt", "sdk/libs/*.jar", "sdk/*.json", "sdk/LICENSE"]
+ftcsim = ["web/*", "web/licenses/*", "web/_app/*", "web/_app/immutable/*/*", "templates/*.txt", "sdk/libs/*.jar", "sdk/*.json", "sdk/LICENSE"]

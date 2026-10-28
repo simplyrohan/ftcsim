@@ -1,7 +1,7 @@
 # Physical device drivers
 
 Drivers are built into ftcsim, with Python models in `src/ftcsim/drivers/` and
-browser widgets in `src/ftcsim/ds/assets/widgets/`. There is no end-user plugin
+Svelte counterparts in `driver-station/src/lib/model/widgets.ts`. There is no end-user plugin
 installation mechanism.
 
 ## Device model
@@ -26,7 +26,8 @@ IMU yaw, offset compensation, SE(2) pose integration, and the SDK 12 firmware-v3
 register protocol, including configurable bulk reads and CRC-8.
 Missing pods produce the corresponding SDK fault status. Reset and 250 ms IMU
 calibration status are modeled. Pitch and roll are zero; there is no IMU drift,
-noise, slip, collision, torque, or chassis dynamics.
+noise, slip, collision, or torque. Mecanum chassis motion is supplied by the
+optional [mechanism layer](MECHANISMS.md).
 
 `physics/model.py` owns hubs and routes Lynx traffic to driver instances.
 `I2CBus` translates Lynx transactions and status queries to a device's register
@@ -37,11 +38,11 @@ original `GoBildaPinpointDriver` with `LynxI2cDeviceSynchV2`.
 
 ## Configuration
 
-Use the Driver Station's **Hardware map** page (`/ds/hardware`) to add drivers,
+Use the Driver Station's **Settings → Hardware map** modal to add drivers,
 set names and hub/port assignments, edit device settings, and attach/remove
 Pinpoint's X/Y pods. The editor is generated from the Python driver catalog's
 configuration metadata. Adding a driver does not require adding form fields to
-the browser by hand.
+the browser by hand. `/ds/hardware` also opens this settings section.
 
 Edits save automatically in localStorage, scoped to the simulator origin and
 SDK WebSocket address. **Apply to SDK** sends the full map through the SDK's DS
@@ -62,8 +63,9 @@ file onto the drop area or expand **Paste JSON instead**, paste the file content
 and select **Load JSON** when an embedded browser blocks file dialogs. Every
 input path imports a portable JSON map, validates the entire topology and
 all driver options, then saves it as the browser's draft. It does not change the
-SDK until **Apply to SDK** is pressed. Invalid files and storage failures preserve
-the previous draft and applied map. Files are limited to 1 MiB.
+SDK until **Apply to SDK** is pressed. Invalid files preserve the previous draft
+and applied map. If browser storage is unavailable, a valid loaded map remains
+usable in the current tab and can be saved to a file. Files are limited to 1 MiB.
 
 **Save to file** downloads the current valid draft as `ftcsim-hardware-map.json`.
 Files contain `format: "ftcsim.hardware-map"`, `version: 1`, `devices`, and optional
@@ -109,10 +111,55 @@ Available `options`:
 
 | Driver | Options and defaults |
 | --- | --- |
-| `motor` | `max_ticks_per_second`: 2800 |
+| `motor` | `max_rpm`: 312, `ticks_per_revolution`: 537.7, `direction`: 1 (or -1) |
 | `servo` | `min_pulse_us`: 500, `max_pulse_us`: 2500 |
 | `odometry` | `axis`: `x`, `offset_mm`: 0, `ticks_per_mm`: 13.26291192, `direction`: 1 (or -1) |
 | `pinpoint` | `ticks_per_mm`: 13.26291192, `x_offset_mm`: 0, `y_offset_mm`: 0 |
+
+### Motors
+
+Each motor's **Device settings** has editable maximum RPM and encoder ticks per
+output-shaft revolution. The **Motor preset** dropdown fills both values from
+goBILDA 5203 Yellow Jacket specifications at 12 V; either value remains editable.
+Choosing a preset preserves the motor's physical direction. Available presets:
+
+| Gear ratio | Maximum RPM | Encoder ticks/revolution |
+| --- | --- | --- |
+| 1:1 | 6000 | 28 |
+| 3.7:1 | 1620 | 103.8 |
+| 5.2:1 | 1150 | 145.1 |
+| 13.7:1 | 435 | 384.5 |
+| 19.2:1 | 312 | 537.7 |
+| 26.9:1 | 223 | 751.8 |
+| 50.9:1 | 117 | 1425.1 |
+| 71.2:1 | 84 | 1993.6 |
+| 99.5:1 | 60 | 2786.2 |
+| 139:1 | 43 | 3895.9 |
+| 188:1 | 30 | 5281.1 |
+
+Counts are quadrature ticks after the motor's built-in gearbox. Each catalog
+preset includes its manufacturer source; see, for example, the
+[312 RPM specification](https://www.gobilda.com/content/spec_sheets/5203-2402-0019_spec_sheet.pdf).
+The power-mode tick velocity limit is `max_rpm * ticks_per_revolution / 60`.
+Velocity commands use ticks/second and are clamped to this limit.
+
+**Physical direction → Reversed** changes the shaft's rotation relative to the
+mechanism. Native motor encoder coordinates and run-to-position targets remain
+consistent with the motor's own encoder. TeamCode's SDK `setDirection` still
+operates independently; its reversal and physical reversal multiply. Mechanisms
+read each motor's signed shaft speed, so RPM, resolution, and direction apply to
+the drivetrain and its connected odometry sensors automatically. The drivetrain
+also has separate wheel mounting signs and optional external gearing.
+
+For example, a reversed 435 RPM motor uses:
+
+```json
+{"max_rpm": 435, "ticks_per_revolution": 384.5, "direction": -1}
+```
+
+These options persist in browser storage and portable hardware-map files. Apply
+the hardware map while stopped to update the live model. Existing files using
+`max_ticks_per_second` are converted to RPM while preserving their tick limit.
 
 A pod's `offset_mm` describes its **physical** mount. For an x wheel it is the
 leftward displacement from center; for a y wheel it is the forward displacement.
@@ -125,14 +172,16 @@ resolution does not silently change when SDK estimator settings change.
 ## Physical inputs and UI
 
 The server streams nested snapshots on `/sim/drivers`. The widget registry maps
-each Python `kind` to a JavaScript class. Widgets update existing DOM nodes;
+each Python `kind` to a presenter. Reactive Svelte cards update existing DOM nodes;
 Pinpoint renders its own state with pod widgets nested underneath.
 
-Use **Sensor motion input** in the Driver Station to supply forward/left mm/s
+Use **Sensor motion input** on the **Devices** sidebar page to supply forward/left mm/s
 and yaw degrees/s. Internally, `Robot.set_motion(vx, vy, angular_velocity)` uses
 mm/s and radians/s, then `advance(dt)` advances the whole device tree once.
-Body motion is independent of motors until a chassis model is added. Motor and
-servo outputs come only from the SDK. SDK STOP, disconnect, and valid
+Configured mechanisms instead supply motion to their connected sensor trees
+from actuator state; manual motion affects other sensors. Global actuator →
+mechanism → sensor phases ensure fresh motor velocities and one sensor update
+per tick. Motor and servo outputs come only from the SDK. SDK STOP, disconnect, and valid
 reconfiguration clear motion and disable outputs.
 
 ## Adding a driver
@@ -148,8 +197,9 @@ reconfiguration clear motion and disable outputs.
 3. For composite devices, declare `child_ports`, `child_connections`, and optional
    `child_defaults`. Let `Driver.advance` recurse rather than ticking children
    again in the parent's `step` method.
-4. Add a widget class and register its `kind` in `widgets/index.js`. Common
-   encoder fields are reusable through `EncoderWidget`.
+4. Add a presenter and register its `kind` in
+   `driver-station/src/lib/model/widgets.ts`. Common encoder fields are reusable
+   through `EncoderPresenter`. For custom visuals, extend `DriverCard.svelte`.
 5. Add the real SDK device factory and port binding to `DesktopDeviceDrivers` if
    robot programs can access it. Rebuild with `python3 scripts/build_sdk.py` to
    refresh the packaged JVM runtime.

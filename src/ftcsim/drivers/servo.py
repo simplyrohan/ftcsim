@@ -7,6 +7,7 @@ class Servo(Driver):
     display_name = 'Servo'
     option_metadata = {'min_pulse_us': {'label': 'Minimum pulse (µs)', 'min': 0.01}, 'max_pulse_us': {'label': 'Maximum pulse (µs)', 'min': 0.01}}
     kind = 'servo'
+    phase = 'actuator'
     connection = 'servo'
     REGISTERS = {'ServoConfiguration': (2, struct.pack('<H', 20000)),
                  'ServoPulseWidth': (2, struct.pack('<H', 1500)), 'ServoEnable': (1, b'\x00')}

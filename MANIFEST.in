@@ -1,6 +1,11 @@
-include PROTOCOL.md DRIVERS.md setup.py
+include PROTOCOL.md DRIVERS.md MECHANISMS.md setup.py
 recursive-include scripts *.py
-recursive-include src/ftcsim *.py *.txt *.html *.js
+recursive-include src/ftcsim *.py *.txt
+graft driver-station
+prune driver-station/node_modules
+prune driver-station/.svelte-kit
+prune driver-station/build
+prune src/ftcsim/web
 graft sdk
 prune sdk/.gradle
 prune src/ftcsim/sdk

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Central HTTP/WebSocket server. Run independently of the desktop SDK."""
 import asyncio
-import hashlib
 from contextlib import suppress
 from pathlib import Path
 from dataclasses import dataclass
 from aiohttp import web, WSMsgType
 from .physics.model import Robot
 from .drivers import DRIVERS
+from .mechanisms import MECHANISMS
 
 ROOT = Path(__file__).resolve().parent
 ROBOT = web.AppKey('robot', Robot)
@@ -102,26 +102,43 @@ async def driver_types(request):
     return web.json_response(DRIVERS.catalog(), headers={'Cache-Control': 'no-store'})
 
 
+async def mechanism_types(request):
+    return web.json_response(MECHANISMS.catalog(), headers={'Cache-Control': 'no-store'})
+
+
+async def configure_mechanisms(request):
+    origin = request.headers.get('Origin')
+    if origin and origin != f'{request.scheme}://{request.host}':
+        raise web.HTTPForbidden(text='Open the Driver Station from the simulator origin')
+    try:
+        data = await request.json()
+        if not isinstance(data, dict) or set(data) != {'mechanisms'}:
+            raise ValueError('Expected a mechanisms array')
+        request.app[ROBOT].configure_mechanisms(data['mechanisms'])
+    except (ValueError, TypeError) as error:
+        return web.json_response(dict(message=str(error)), status=400)
+    return web.json_response(request.app[ROBOT].snapshot(), headers={'Cache-Control': 'no-store'})
+
+
 async def ds(request):
-    # This route is static: no Driver Station state or SDK proxy exists in Python.
-    assets = ROOT / 'ds' / 'assets'
-    digest = hashlib.sha256()
-    for source in sorted(assets.rglob('*.js')):
-        digest.update(str(source.relative_to(assets)).encode())
-        digest.update(source.read_bytes())
-    version = digest.hexdigest()[:16]
-    html = (ROOT / 'ds' / 'index.html').read_text().replace('__FTCSIM_ASSET_VERSION__', version)
-    return web.Response(text=html, content_type='text/html', headers={'Cache-Control': 'no-store'})
-
-
-async def ds_asset(request):
-    # Relative ES imports retain the version directory, so changing any module
-    # invalidates the entire graph rather than mixing old and new dependencies.
-    assets = (ROOT / 'ds' / 'assets').resolve()
-    source = (assets / request.match_info['filename']).resolve()
-    if not source.is_relative_to(assets) or not source.is_file():
+    """Serve the SvelteKit static bundle and its client-side routes."""
+    root = (ROOT / 'web').resolve()
+    relative = request.match_info.get('path', '')
+    source = (root / relative).resolve()
+    if not source.is_relative_to(root):
         raise web.HTTPNotFound()
-    return web.FileResponse(source, headers={'Cache-Control': 'no-store'})
+    if source.is_file():
+        cache = 'public, max-age=31536000, immutable' if relative.startswith('_app/immutable/') else 'no-cache'
+        if source.name.endswith('.html'):
+            cache = 'no-store'
+        return web.FileResponse(source, headers={'Cache-Control': cache})
+    # Missing assets must be 404s, never an HTML fallback with the wrong MIME type.
+    if relative.startswith('_app/') or Path(relative).suffix:
+        raise web.HTTPNotFound()
+    index = root / 'index.html'
+    if not index.is_file():
+        raise web.HTTPServiceUnavailable(text='Driver Station has not been built. Run python3 scripts/build_driver_station.py with Node.js 22.12+ installed.')
+    return web.FileResponse(index, headers={'Cache-Control': 'no-store'})
 
 
 async def home(request):
@@ -149,29 +166,22 @@ async def lifecycle(app):
         await ws.close(code=1001, message=b'Simulator stopping')
 
 
-@web.middleware
-async def driver_station_cache(request, handler):
-    response = await handler(request)
-    if request.path.startswith('/ds/assets/'):
-        response.headers['Cache-Control'] = 'no-store'
-    return response
-
-
-def create_app():
-    app = web.Application(client_max_size=1024 * 1024, middlewares=[driver_station_cache])
+def create_app(*, dev=False):
+    """Create the simulator API, optionally leaving the UI to the Vite dev server."""
+    app = web.Application(client_max_size=1024 * 1024)
     app[ROBOT] = Robot()
     app[PEER] = SdkLink()
     app[DRIVER_CLIENTS] = set()
-    app.router.add_get('/', home)
     app.router.add_get('/sim', simulator)
     app.router.add_get('/sim/state', state)
     app.router.add_get('/sim/drivers', drivers)
     app.router.add_get('/sim/driver-types', driver_types)
-    app.router.add_get('/ds/assets/{version:[0-9a-f]{16}}/{filename:.*}', ds_asset)
-    app.router.add_static('/ds/assets/', ROOT / 'ds' / 'assets')
-    app.router.add_get('/ds', ds)
-    app.router.add_get('/ds/', ds)
-    app.router.add_get('/ds/hardware', ds)
+    app.router.add_get('/sim/mechanism-types', mechanism_types)
+    app.router.add_post('/sim/mechanisms', configure_mechanisms)
+    if not dev:
+        app.router.add_get('/', home)
+        app.router.add_get('/ds', ds)
+        app.router.add_get('/ds/{path:.*}', ds)
     app.cleanup_ctx.append(lifecycle)
     return app
 

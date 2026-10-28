@@ -19,3 +19,8 @@ __pycache__/
 dist/
 *.egg-info/
 src/ftcsim/sdk/
+src/ftcsim/web/
+node_modules/
+.svelte-kit/
+driver-station/.env*
+!driver-station/.env.example

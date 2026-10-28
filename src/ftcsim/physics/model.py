@@ -1,9 +1,11 @@
 """Hub protocol routing and physical driver topology. No OpMode/DS lifecycle."""
 import struct
+from copy import deepcopy
 from .registers import HubState
 from ..drivers import BodyMotion, DCMotor, Servo, Encoder, I2CDriver, DRIVERS
 from ..drivers.base import number
 from ..drivers.i2c import I2CBus
+from ..mechanisms import MECHANISMS
 
 
 class Hub(HubState):
@@ -39,14 +41,13 @@ class Hub(HubState):
             raise ValueError(f'Unsupported hub connection: {connection}')
         self.devices.append(device)
 
-    def advance(self, dt, motion):
-        # All hidden hardware channels also participate in failsafe and dynamics.
-        drivers = dict.fromkeys([*self.motors, *self.servos, *self.devices])
-        for device in drivers:
-            device.advance(dt, motion)
+    @property
+    def root_drivers(self):
+        # Include hidden hardware channels initialized by SDK controllers.
+        return tuple(dict.fromkeys([*self.motors, *self.servos, *self.devices]))
 
     def failsafe(self):
-        for device in dict.fromkeys([*self.motors, *self.servos, *self.devices]):
+        for device in self.root_drivers:
             device.failsafe()
 
     def dispatch(self, request):
@@ -97,6 +98,27 @@ class Robot:
         self.command_count = 0
         self.connected = False
         self.motion = BodyMotion()
+        self.mechanisms = []
+        self.mechanism_configuration = []
+        self.mechanism_error = ''
+
+    @staticmethod
+    def driver_index(hubs):
+        result = {}
+        def visit(driver):
+            result[driver.name] = driver
+            for child in driver.children.values():
+                visit(child)
+        for hub in hubs.values():
+            for driver in hub.devices:
+                visit(driver)
+        return result
+
+    def configure_mechanisms(self, definitions):
+        instances = MECHANISMS.create_all(definitions, self.driver_index(self.hubs))
+        self.mechanisms = instances
+        self.mechanism_configuration = deepcopy(definitions)
+        self.mechanism_error = ''
 
     def configure(self, devices, *, validate_only=False):
         if not isinstance(devices, list) or len(devices) > 256:
@@ -117,6 +139,14 @@ class Robot:
             return
         self.failsafe()
         self.hubs = hubs
+        # Mechanisms never constrain the SDK's hardware map. Rebind to replacement
+        # drivers, or suspend the model with a visible error if a reference vanished.
+        try:
+            self.mechanisms = MECHANISMS.create_all(self.mechanism_configuration, self.driver_index(hubs))
+            self.mechanism_error = ''
+        except (ValueError, TypeError) as error:
+            self.mechanisms = []
+            self.mechanism_error = f'Mechanisms suspended after hardware change: {error}'
 
     def set_motion(self, vx=0, vy=0, angular_velocity=0):
         values = [number(value, label) for value, label in [(vx, 'vx'), (vy, 'vy'), (angular_velocity, 'angular_velocity')]]
@@ -128,6 +158,8 @@ class Robot:
         self.motion = BodyMotion()
         for hub in self.hubs.values():
             hub.failsafe()
+        for mechanism in self.mechanisms:
+            mechanism.failsafe()
 
     def exchange(self, request):
         identifier = request.get('id')
@@ -154,6 +186,8 @@ class Robot:
             payload = self.hubs[address].dispatch(request)
             if request['command'].rsplit('.', 1)[-1] == 'LynxFailSafeCommand':
                 self.motion = BodyMotion()
+                for mechanism in self.mechanisms:
+                    mechanism.failsafe()
             self.command_count += 1
             return dict(type=kind, id=identifier, status='response' if request.get('response') else 'ack', payload=payload.hex())
         except NotImplementedError:
@@ -165,11 +199,25 @@ class Robot:
         dt = number(dt, 'dt')
         if dt < 0:
             raise ValueError('dt must be non-negative')
-        for hub in self.hubs.values():
-            hub.advance(dt, self.motion)
+        roots = [driver for hub in self.hubs.values() for driver in hub.root_drivers]
+        # Global phases avoid a one-tick delay and hub-order dependence. Motors
+        # advance first; mechanisms read velocity; pods advance before their IMU.
+        for driver in roots:
+            if driver.phase == 'actuator':
+                driver.advance(dt, self.motion)
+        sensor_inputs = {}
+        for mechanism in self.mechanisms:
+            mechanism.advance(dt)
+            sensor_inputs.update(mechanism.sensor_inputs())
+        for driver in roots:
+            if driver.phase == 'sensor':
+                driver.advance(dt, sensor_inputs.get(driver, self.motion))
 
     def snapshot(self):
         devices = [device for _, hub in sorted(self.hubs.items()) for device in hub.snapshot()]
         return dict(type='state', connected=self.connected, commands=self.command_count,
-                    devices=devices, motion=dict(vx=self.motion.vx, vy=self.motion.vy,
+                    devices=devices, mechanisms=[mechanism.snapshot() for mechanism in self.mechanisms],
+                    mechanism_configuration=deepcopy(self.mechanism_configuration),
+                    mechanism_error=self.mechanism_error,
+                    motion=dict(vx=self.motion.vx, vy=self.motion.vy,
                                                angular_velocity=self.motion.angular_velocity))

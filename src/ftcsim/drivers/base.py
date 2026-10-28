@@ -21,6 +21,7 @@ class BodyMotion:
 
 class Driver:
     kind = 'device'
+    phase = 'sensor'
     connection = ''
     child_ports = ()
     child_connections = {}

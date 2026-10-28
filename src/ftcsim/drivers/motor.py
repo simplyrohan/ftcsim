@@ -3,12 +3,19 @@ import math
 import struct
 from .base import number
 from .encoder import Encoder
+from .motor_presets import GOBILDA_PRESETS
 
 
 class DCMotor(Encoder):
     display_name = 'DC motor'
-    option_metadata = {'max_ticks_per_second': {'label': 'Maximum speed (ticks/s)', 'min': 0.01}}
+    option_metadata = {
+        'max_rpm': dict(label='Maximum RPM', min=0.01),
+        'ticks_per_revolution': dict(label='Encoder ticks per output-shaft revolution', min=0.01),
+        'direction': dict(label='Physical direction', choices=[dict(value=1, label='Forward'), dict(value=-1, label='Reversed')]),
+    }
+    presets = GOBILDA_PRESETS
     kind = 'motor'
+    phase = 'actuator'
     connection = 'motor'
     REGISTERS = {
         'MotorConstantPower': (2, bytes(2)),
@@ -19,10 +26,33 @@ class DCMotor(Encoder):
         'MotorTargetPosition': (6, bytes(6)),
     }
 
-    def __init__(self, name, port, max_ticks_per_second=2800):
+    def __init__(self, name, port, max_rpm=312, ticks_per_revolution=537.7, direction=1):
         super().__init__(name, port)
-        self.max_speed = number(max_ticks_per_second, 'max_ticks_per_second', positive=True)
+        self.max_rpm = number(max_rpm, 'max_rpm', positive=True)
+        self.ticks_per_revolution = number(ticks_per_revolution, 'ticks_per_revolution', positive=True)
+        self.max_speed = number(self.max_rpm / 60 * self.ticks_per_revolution, 'maximum tick velocity', positive=True)
+        if type(direction) is not int or direction not in (-1, 1):
+            raise ValueError('Motor direction must be 1 (forward) or -1 (reversed)')
+        self.direction = direction
         self.registers = {}
+
+    @staticmethod
+    def normalize_options(options):
+        """Read existing hardware maps without exposing the old speed setting."""
+        options = dict(options)
+        if 'max_ticks_per_second' in options:
+            speed = number(options.pop('max_ticks_per_second'), 'max_ticks_per_second', positive=True)
+            ticks = number(options.get('ticks_per_revolution', 537.7), 'ticks_per_revolution', positive=True)
+            if 'max_rpm' in options:
+                raise ValueError('Use max_rpm instead of max_ticks_per_second')
+            options['max_rpm'] = speed / ticks * 60
+        return options
+
+    @property
+    def shaft_revolutions_per_second(self):
+        # Encoder coordinates remain native to the motor. Physical reversal is
+        # applied here so velocity control and RUN_TO_POSITION retain their meaning.
+        return self.velocity / self.ticks_per_revolution * self.direction
 
     def register(self, name):
         return self.registers.get(name, self.REGISTERS[name][1])
@@ -86,4 +116,6 @@ class DCMotor(Encoder):
 
     def state(self):
         return dict(super().state(), enabled=self.enabled, mode=self.mode, power=self.power,
-                    max_ticks_per_second=self.max_speed)
+                    max_ticks_per_second=self.max_speed, max_rpm=self.max_rpm,
+                    ticks_per_revolution=self.ticks_per_revolution, direction=self.direction,
+                    shaft_rpm=self.shaft_revolutions_per_second * 60)
