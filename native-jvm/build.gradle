@@ -1,0 +1,73 @@
+plugins { id 'java'; id 'application' }
+repositories {
+    mavenCentral { metadataSources { mavenPom(); artifact(); ignoreGradleMetadataRedirection() } }
+    google { metadataSources { mavenPom(); artifact(); ignoreGradleMetadataRedirection() } }
+}
+configurations { sdkLibraries }
+def sdkModules = ['RobotCore','RobotServer','Hardware','Inspection','FtcCommon','Vision','Blocks','OnBotJava']
+dependencies {
+    sdkLibraries 'org.robolectric:android-all:11-robolectric-6757853'
+    sdkLibraries 'androidx.appcompat:appcompat:1.2.0'
+    sdkLibraries 'com.jakewharton.threetenabp:threetenabp:1.3.1'
+    sdkLibraries 'org.openftc:easyopencv:1.7.3'
+    sdkLibraries 'org.openftc:apriltag:2.1.0'
+    sdkLibraries 'com.journeyapps:zxing-android-embedded:4.3.0'
+    sdkLibraries 'io.github.ehn-digital-green-development:base45:0.0.3'
+    sdkLibraries 'com.android.tools:r8:8.5.35'
+}
+def prepared = layout.buildDirectory.dir('dependencies')
+tasks.register('prepareLibraries') {
+    inputs.files(configurations.sdkLibraries)
+    outputs.dir(prepared)
+    doLast {
+        delete prepared
+        def out = prepared.get().asFile; out.mkdirs()
+        configurations.sdkLibraries.files.each { f ->
+            if (f.name.endsWith('.aar')) {
+                zipTree(f).matching { include 'classes.jar', 'libs/*.jar' }.files.each { jarFile ->
+                    copy { from jarFile; into out; rename { f.name.replace('.aar', '') + '-' + jarFile.name } }
+                }
+            } else { copy { from f; into out } }
+        }
+    }
+}
+sourceSets.main.java.srcDirs = ['src/main/java', 'build/generated'] + (sdkModules + ['TeamCode']).collect { "../${it}/src/main/java" }
+def libraryJars = files(provider { fileTree(prepared).matching { include '**/*.jar' } })
+def bundled = files(sdkModules.collect { fileTree("../${it}/libs").matching { include '*.jar'; exclude 'slf4j-handroid*' } })
+sourceSets.main.compileClasspath = libraryJars + bundled
+sourceSets.main.runtimeClasspath = sourceSets.main.output + libraryJars + bundled
+java { sourceCompatibility = JavaVersion.VERSION_1_8; targetCompatibility = JavaVersion.VERSION_1_8 }
+tasks.register('generateResources', Exec) {
+    commandLine 'python3', 'tools/resources.py'
+    inputs.files(sdkModules.collect { fileTree("../${it}/src/main/res") })
+    inputs.file('tools/resources.py')
+    outputs.dir('build/generated')
+}
+tasks.named('compileJava') { dependsOn 'prepareLibraries', 'generateResources'; options.encoding = 'UTF-8'; options.release = 8 }
+application { mainClass = 'ftcsim.jvm.SmokeTest'; applicationDefaultJvmArgs = ['-Dftcsim.jvm=true'] }
+tasks.register('writeClasspath') {
+    dependsOn 'classes'
+    doLast { file('build/classpath.txt').text = sourceSets.main.runtimeClasspath.asPath }
+}
+
+sourceSets { desktop { java.srcDirs = ['src/desktop/java'] } }
+sourceSets.desktop.compileClasspath = libraryJars + bundled + files('build/classes/java/main')
+tasks.named('compileDesktopJava') { dependsOn 'compileJava'; options.release = 8 }
+tasks.named('classes') { dependsOn 'desktopClasses' }
+sourceSets.main.runtimeClasspath = sourceSets.desktop.output + sourceSets.main.output + libraryJars + bundled
+tasks.named('jar') { from sourceSets.desktop.output }
+
+// Use uniquely named extracted jars in a relocatable desktop distribution.
+tasks.named('startScripts') {
+    dependsOn 'prepareLibraries'
+    classpath = files(tasks.named('jar')) + libraryJars + bundled
+}
+distributions { main { contents { into('lib') { from libraryJars; from bundled } } } }
+tasks.named('installDist') { dependsOn 'prepareLibraries' }
+
+tasks.register('bridgeTest', Exec) {
+    dependsOn 'writeClasspath', 'installDist'
+    environment 'PYTHONDONTWRITEBYTECODE', '1'
+    commandLine 'python3', '-m', 'unittest', 'discover', '-s', 'python', '-v'
+}
+tasks.named('check') { dependsOn 'bridgeTest' }

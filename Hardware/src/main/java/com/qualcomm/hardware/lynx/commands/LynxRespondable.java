@@ -156,6 +156,24 @@ public abstract class LynxRespondable<RESPONSE extends LynxMessage> extends Lynx
         this.ackOrNackReceived.countDown();
         }
 
+    /** Response schema used by desktop command transports. */
+    public String getExpectedResponseClassName()
+        {
+        return defaultResponse == null ? null : defaultResponse.getClass().getName();
+        }
+
+    /** Decode a remote payload using the SDK's real response class, never a fabricated value. */
+    public void onRemotePayloadReceived(byte[] payload)
+        {
+        if (!isResponseExpected()) throw new IllegalStateException("Command expects an ACK");
+        defaultResponse.fromPayloadByteArray(payload);
+        TimeWindow window = new TimeWindow();
+        window.setNanosecondsFirst(System.nanoTime());
+        window.setNanosecondsLast(window.getNanosecondsFirst());
+        defaultResponse.setPayloadTimeWindow(window);
+        onResponseReceived(defaultResponse);
+        }
+
     // called on datagram receive thread
     public void onAckReceived(LynxAck ack)
         {

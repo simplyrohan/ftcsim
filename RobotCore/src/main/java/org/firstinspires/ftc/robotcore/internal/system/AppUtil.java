@@ -1866,7 +1866,8 @@ public class AppUtil
 
     static
         {
-        System.loadLibrary("RobotCore");
+        // Desktop mode uses Java platform adapters and must never load ARM JNI libraries.
+        if (!Boolean.getBoolean("ftcsim.jvm")) System.loadLibrary("RobotCore");
         }
 
     //----------------------------------------------------------------------------------------------

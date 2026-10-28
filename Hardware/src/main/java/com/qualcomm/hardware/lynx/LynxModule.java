@@ -255,6 +255,14 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
     //----------------------------------------------------------------------------------------------
 
     protected LynxUsbDevice         lynxUsbDevice;
+    private volatile LynxCommandTransport commandTransport;
+
+    /** Select a non-USB transport before using this module. Null restores the USB transport. */
+    public void setCommandTransport(LynxCommandTransport transport)
+        {
+        this.commandTransport = transport;
+        }
+
     protected List<LynxController>  controllers;
     protected final Object          addrAndSerialLock;
     protected int                   moduleAddress; // Protected by addrAndSerialLock
@@ -2018,6 +2026,14 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
                 return;
             }
 
+        LynxCommandTransport transport = commandTransport;
+        if (transport != null)
+            {
+            command.setMessageNumber(getNewMessageNumber());
+            transport.transmit(command);
+            return;
+            }
+
         command.setMessageNumber(getNewMessageNumber());
         int msgnumCur = command.getMessageNumber();
 
@@ -2043,7 +2059,9 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
         {
         warnIfClosed();
         RobotLog.vv(TAG, "retransmitting: mod=%d cmd=0x%02x msg#=%d ref#=%d ", this.getModuleAddress(), message.getCommandNumber(), message.getMessageNumber(), message.getReferenceNumber());
-        this.lynxUsbDevice.transmit(message);
+        LynxCommandTransport transport = commandTransport;
+        if (transport != null) transport.transmit(message);
+        else this.lynxUsbDevice.transmit(message);
         }
 
     public void finishedWithMessage(LynxMessage message) // must be idempotent
