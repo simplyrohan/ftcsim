@@ -9,5 +9,5 @@ public class Context {
     public CharSequence getText(int id) { return resources.getText(id); }
     public Context getApplicationContext() { return this; }
     public String getPackageName() { return "org.firstinspires.ftcsim.jvm"; }
-    public Object getSystemService(String name) { throw new UnsupportedOperationException("Android service: " + name); }
+    public Object getSystemService(String name) { if(name.equals("uimode"))return new android.app.UiModeManager(); throw new UnsupportedOperationException("Android service: " + name); }
 }

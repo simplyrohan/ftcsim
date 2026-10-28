@@ -1,5 +1,8 @@
 # FTC SDK 12.0.0 on a desktop JVM
 
+For the copied BioBuzz Red TeleOp and live dashboard, see [BioBuzz setup](biobuzz/README.md)
+or run `./run-biobuzz.sh` from the repository root.
+
 This build compiles all eight extracted SDK modules, plus TeamCode, into ordinary
 Java bytecode. It uses the Java Gradle plugin and does not require an Android SDK,
 emulator, REV Control Hub, or ARM native library for the verified hardware paths.
@@ -116,8 +119,8 @@ OnBotJava's Android services, USB discovery, camera/vision native pipelines, and
 Android event-loop/Driver Station services have not been ported or runtime-tested.
 `android-all` supplies Android API signatures and Java implementations for linking;
 it does not turn Android services or JNI methods into desktop implementations.
-TeamCode is compiled, but this project does not yet provide an OpMode lifecycle
-runner. The verified APIs are the low-level command path and standard motor,
+TeamCode is compiled. A desktop iterative lifecycle runner now supports the copied
+BioBuzz Red TeleOp; LinearOpMode and full Android lifecycle services remain unsupported. The verified APIs are the low-level command path and standard motor,
 servo and bulk-read controllers; additional device paths may require adapters.
 
 Resource symbols/string lookups are generated from the extracted XML for desktop

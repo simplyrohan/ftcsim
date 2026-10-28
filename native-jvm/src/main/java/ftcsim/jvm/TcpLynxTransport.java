@@ -75,5 +75,6 @@ public final class TcpLynxTransport implements LynxCommandTransport, AutoCloseab
         }
         return bytes;
     }
+    public boolean isConnected() { return !socket.isClosed(); }
     @Override public synchronized void close() throws IOException { socket.close(); }
 }

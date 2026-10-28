@@ -1,0 +1,17 @@
+{
+  "source": "BioBuzz 797d360",
+  "devices": [
+    {"name":"lf","type":"motor","module":1,"port":0,"label":"Front left","group":"Drive"},
+    {"name":"lr","type":"motor","module":1,"port":1,"label":"Rear left","group":"Drive"},
+    {"name":"rf","type":"motor","module":1,"port":2,"label":"Front right","group":"Drive"},
+    {"name":"rr","type":"motor","module":1,"port":3,"label":"Rear right","group":"Drive"},
+    {"name":"intakeMotorFront","type":"motor","module":2,"port":0,"label":"Intake front","group":"Intake"},
+    {"name":"intakeMotorBack","type":"motor","module":2,"port":1,"label":"Intake back","group":"Intake"},
+    {"name":"shooterMotor","type":"motor","module":2,"port":2,"label":"Shooter","group":"Shooter"},
+    {"name":"transferMotor","type":"motor","module":2,"port":3,"label":"Transfer","group":"Transfer"},
+    {"name":"intakeServoFront","type":"servo","module":2,"port":0,"label":"Intake front lift","group":"Intake"},
+    {"name":"intakeServoBack","type":"servo","module":2,"port":1,"label":"Intake back lift","group":"Intake"},
+    {"name":"turretServoBack","type":"servo","module":2,"port":2,"label":"Turret back","group":"Turret"},
+    {"name":"turretServoFront","type":"servo","module":2,"port":3,"label":"Turret front","group":"Turret"}
+  ]
+}

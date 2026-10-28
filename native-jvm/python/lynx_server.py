@@ -112,6 +112,7 @@ class LynxServer(socketserver.ThreadingTCPServer):
 
     def __init__(self, address, log_path=None, interceptor=None):
         if address[0] != '127.0.0.1': raise ValueError('Only IPv4 loopback is supported')
+        self.log = None
         super().__init__(address, Handler)
         self.lock = threading.RLock()
         self.modules = {}
@@ -151,7 +152,9 @@ class LynxServer(socketserver.ThreadingTCPServer):
 
 class Handler(socketserver.StreamRequestHandler):
     def handle(self):
-        self.connection.settimeout(30)
+        # SDK caches may leave the bus idle for minutes. Keep the connection open;
+        # the JVM bounds each active exchange with its own response timeout.
+        self.connection.settimeout(None)
         try:
             while True:
                 header = self.rfile.read(4)

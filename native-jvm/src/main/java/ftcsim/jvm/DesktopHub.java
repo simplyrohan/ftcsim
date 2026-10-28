@@ -48,6 +48,7 @@ public final class DesktopHub extends LynxModule implements AutoCloseable {
         // DEKA classes are routed by class name, so interface-number negotiation is unnecessary.
         return LynxDekaInterfaceCommand.class.isAssignableFrom(command) || super.isCommandSupported(command);
     }
+    public boolean isTransportConnected() { return transport.isConnected(); }
     @Override public void close() {
         try { super.close(); }
         finally { try { transport.close(); } catch (IOException e) { throw new IllegalStateException(e); } }
