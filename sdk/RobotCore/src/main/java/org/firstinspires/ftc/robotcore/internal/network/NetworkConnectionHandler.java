@@ -81,6 +81,12 @@ public class NetworkConnectionHandler {
     private static final NetworkConnectionHandler theInstance = new NetworkConnectionHandler();
     private static final int IP_ADDRESS_TIMEOUT_SECONDS = 3;
 
+    private static volatile DriverStationTransport desktopTransport;
+
+    public static void setDriverStationTransport(DriverStationTransport transport) {
+        desktopTransport = transport;
+    }
+
     public static NetworkConnectionHandler getInstance() {
         return theInstance;
     }
@@ -135,6 +141,7 @@ public class NetworkConnectionHandler {
     }
 
     protected static WifiManager.WifiLock newWifiLock() {
+        if (Boolean.getBoolean("ftcsim.jvm")) return null;
         WifiManager.WifiLock lock = getWifiManager().createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "");
         lock.setReferenceCounted(false);
         return lock;
@@ -530,6 +537,8 @@ public class NetworkConnectionHandler {
     }
 
     public void sendCommand(Command cmd) {
+        DriverStationTransport transport = desktopTransport;
+        if (transport != null) { transport.sendCommand(cmd); return; }
         SendOnceRunnable sendOnceRunnable = this.sendOnceRunnable;
         if (sendOnceRunnable != null) sendOnceRunnable.sendCommand(cmd);
     }
@@ -570,6 +579,8 @@ public class NetworkConnectionHandler {
     }
 
     public void sendDataToPeer(RobocolParsable parsable) throws RobotCoreException {
+        DriverStationTransport transport = desktopTransport;
+        if (transport != null) { transport.sendData(parsable); return; }
         InetAddress remoteAddrCopy = remoteAddr; // We need a copy that can't turn null on us
         if (remoteAddrCopy != null) {
             sendDatagram(new RobocolDatagram(parsable, remoteAddrCopy));
