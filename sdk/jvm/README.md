@@ -26,7 +26,7 @@ Repeat `--opmode` to register additional classes. The host reads the real
 `@TeleOp`/`@Autonomous` names and skips `@Disabled` classes; it does not scan arbitrary
 classpath JARs. Robot classes must have a public no-argument constructor. The core
 and runtime can also be used as Gradle library projects. Third-party robot-library
-dependencies belong to the robot project, as shown in `../examples/biobuzz/`.
+dependencies belong to the robot project.
 
 CLI options are `--sim ws://localhost:9015/sim`, `--ds-port 1115`, `--opmode CLASS`,
 and `--config FILE`. Configuration files contain a `devices` array of objects with

@@ -1,0 +1,16 @@
+include PROTOCOL.md setup.py
+recursive-include docs *.md
+recursive-include scripts *.py
+recursive-include src/ftcsim *.py *.txt *.html
+graft sdk
+prune sdk/.gradle
+prune src/ftcsim/sdk
+global-exclude __pycache__ *.py[cod] .DS_Store
+
+prune sdk/*/build
+prune sdk/*/.gradle
+prune sdk/*/*/build
+prune sdk/*/*/.gradle
+
+prune sdk/build
+exclude sdk/local.properties

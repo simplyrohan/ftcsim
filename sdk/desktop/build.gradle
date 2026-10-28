@@ -1,3 +1,13 @@
 plugins { id 'base' }
-tasks.named('build') { dependsOn ':sdk:build', ':runtime:build', ':biobuzz:build' }
-tasks.named('check') { dependsOn ':sdk:check', ':runtime:check', ':biobuzz:check' }
+tasks.named('build') { dependsOn ':sdk:build', ':runtime:build' }
+tasks.named('check') { dependsOn ':sdk:check', ':runtime:check' }
+
+// Package a self-contained JVM classpath; no source checkout or Maven lookup is
+// required to consume these SDK/runtime binaries in a robot project.
+tasks.register('bundlePythonSdk', Sync) {
+    dependsOn ':sdk:jar', ':runtime:jar'
+    into providers.gradleProperty('ftcsimBundleDir').get()
+    from project(':runtime').tasks.named('jar')
+    from project(':runtime').configurations.runtimeClasspath
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+}

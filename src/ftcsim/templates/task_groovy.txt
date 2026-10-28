@@ -1,0 +1,6 @@
+
+tasks.register('runSimulator') {
+    group = 'simulation'
+    description = 'Run TeamCode on the desktop FTC SDK'
+    dependsOn ':TeamCodeSim:run'
+}

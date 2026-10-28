@@ -1,5 +1,4 @@
 rootProject.name = 'ftc-desktop'
-include 'sdk', 'runtime', 'biobuzz'
+include 'sdk', 'runtime'
 project(':sdk').projectDir = file('../jvm')
 project(':runtime').projectDir = file('../runtime')
-project(':biobuzz').projectDir = file('../examples/biobuzz')

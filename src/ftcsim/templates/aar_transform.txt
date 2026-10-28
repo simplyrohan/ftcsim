@@ -1,0 +1,35 @@
+import org.gradle.api.artifacts.transform.*
+import org.gradle.api.artifacts.type.ArtifactTypeDefinition
+import org.gradle.api.file.FileSystemLocation
+import org.gradle.api.provider.Provider
+import org.gradle.api.tasks.*
+import java.util.zip.ZipFile
+
+@CacheableTransform
+abstract class FtcsimAarClasses implements TransformAction<TransformParameters.None> {
+    @InputArtifact @PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract Provider<FileSystemLocation> getArchive()
+    void transform(TransformOutputs outputs) {
+        def source = archive.get().asFile
+        new ZipFile(source).withCloseable { zip ->
+            zip.entries().each { entry ->
+                if (!entry.directory && (entry.name == 'classes.jar' ||
+                        (entry.name.startsWith('libs/') && entry.name.endsWith('.jar')))) {
+                    def output = outputs.file(source.name.replaceFirst(/\.aar$/, '') + '-' + entry.name.replace('/', '-'))
+                    zip.getInputStream(entry).withCloseable { input -> output.withOutputStream { it << input } }
+                }
+            }
+        }
+    }
+}
+dependencies.registerTransform(FtcsimAarClasses) {
+    from.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'aar')
+    to.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'jar')
+}
+repositories.withType(org.gradle.api.artifacts.repositories.MavenArtifactRepository).configureEach { repo ->
+    repo.metadataSources { mavenPom(); artifact(); ignoreGradleMetadataRedirection() }
+}
+configurations.configureEach {
+    exclude group: 'org.firstinspires.ftc'
+    if (canBeResolved) attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'jar')
+}

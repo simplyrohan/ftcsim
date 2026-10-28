@@ -1,0 +1,4 @@
+// User-owned file: the wizard preserves your changes here.
+// Add desktop-only repositories/dependencies, local JVM project equivalents,
+// authentication for private repositories, or platform-specific exclusions here.
+// dependencies { implementation 'group:library:version' }
