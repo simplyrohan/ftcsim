@@ -1,87 +1,81 @@
-# FTCsim
+# FTC desktop simulator
 
-A custom FTC SDK 12.0.0 and a desktop simulator that runs a copied BioBuzz Red
-TeleOp through real SDK hardware controllers and a local Python Lynx bridge.
-
-## Layout
+FTC SDK 12.0.0 on a desktop JVM, connected to an independent Python motor simulator
+and a browser Driver Station. All Java, robot programs, and build tooling live in
+`sdk/`. Python and the static browser page live in `sim/`.
 
 ```text
-sdk/                         Custom FTC SDK
-  RobotCore/, Hardware/, …   Eight extracted, editable SDK libraries
-  FtcRobotController/        Original Android controller application
-  TeamCode/                  Android programming workspace
-  jvm/                       Standalone JVM SDK build + desktop platform adapters
-  tools/                     Reproducible extraction script and artifact checksums
-simulator/                   Simulator driver (depends on the SDK project)
-  src/main/java/             TCP transport, hub adapter and OpMode runner
-  python/                    Lynx server, motor model and integration tests
-  biobuzz/                   Isolated robot-code snapshot, mapping and dashboard
-  bin/biobuzz                Launcher included in the portable distribution
-run-biobuzz.sh               Source-checkout convenience launcher
+Browser Driver Station                 Desktop FTC SDK
+http://localhost:9015/ds  ── WS ──────► localhost:1115/ds
+                                          │
+                                 OpMode → SDK controllers
+                                          │
+                                          ▼ one persistent WS
+Python motor model ◄──────────────── localhost:9015/sim
 ```
 
-The SDK and simulator are separate Gradle projects and produce separate JARs.
-The SDK has no BioBuzz, Pedro Pathing or SolversLib dependency. The original
-BioBuzz checkout is never read or modified by these builds.
+The SDK opens its simulator connection and starts the DS listener during bootstrap,
+before constructing an OpMode. Python does not start Java or hold Driver Station
+state. The DS page talks directly to the SDK. Its only simulator read is the
+physical motor display.
 
-## Run from source
+## Run
 
-Requires JDK 17+ and Python 3.9+ (tested with JDK 21 and Python 3.12):
+Start Python in one terminal (Python 3.10+):
 
 ```sh
-./run-biobuzz.sh
+cd sim
+python3 -m pip install -r requirements.txt
+python3 server.py
 ```
 
-Open **http://127.0.0.1:8085**, then INIT → START. Use WASD to drive, Q/E to turn,
-Space for intake, R/F for intake lift, T for transfer, and Escape to stop.
-The dashboard also provides a controller interface, shooter/turret diagnostics,
-encoder/servo readouts, pose visualization and Lynx traffic.
-
-See [the BioBuzz guide](simulator/biobuzz/README.md) for copy-only adaptations,
-hardware-port assumptions, controls and simulation limitations.
-
-## Build, verify and package
+Start the copied BioBuzz robot in another terminal (JDK 17+):
 
 ```sh
-./gradlew build                 # Both projects, including integration tests
-./gradlew packageAll            # SDK ZIP and runnable simulator ZIP
-./gradlew :simulator:installDist # Unpacked runnable simulator
+cd sdk/desktop
+./gradlew :biobuzz:run
 ```
 
-| Output | Location |
-|---|---|
-| JVM SDK JAR | `sdk/jvm/build/libs/ftc-sdk-jvm-12.0.0.jar` |
-| SDK sources JAR | `sdk/jvm/build/libs/ftc-sdk-jvm-12.0.0-sources.jar` |
-| SDK + dependencies ZIP | `build/distributions/ftc-sdk-jvm-12.0.0.zip` |
-| Simulator driver JAR | `simulator/build/libs/ftcsim-driver-0.1.0.jar` |
-| Portable simulator ZIP | `build/distributions/ftcsim-0.1.0.zip` |
-| Installed simulator | `simulator/build/install/ftcsim/` |
+Open [the Driver Station](http://localhost:9015/ds), select **Red TeleOp**, then
+**INIT** and **START**. Space/gamepad A runs the intake; WASD drives; Q/E are
+bumpers; R/F are triggers. Both browser gamepads and on-screen inputs are supported.
+STOP calls the SDK lifecycle stop and disables hub outputs.
 
-`packageAll` collects both ZIPs into the root `build/distributions/` folder;
-individual project builds also retain their ZIP under their own build folder.
+For an SDK-only motor example, run `./gradlew :runtime:run` instead. Its default
+configuration is one motor named `motor` on hub 1, port 0. Select **Motor demo**
+or **Linear motor demo**. A drives the motor and encoder feedback appears as
+real OpMode telemetry. Configuration can be edited and applied from the DS while
+stopped. BioBuzz's configuration is a copied assumption, not an imported robot XML.
 
-The simulator distribution includes both JARs, third-party dependencies, Python
-server, dashboard, BioBuzz copy and license notices. Extract it anywhere and run:
+## Layout and limits
+
+- [`sdk/`](sdk/README.md): editable upstream modules, desktop compatibility adapters,
+  reusable runtime, and isolated robot examples. Its `desktop/` build creates JARs;
+  its independent Android workspace remains at `sdk/`.
+- [`sim/`](sim/README.md): Python HTTP/WS server, independent hub/motor model,
+  static `ds/` page, and integration tests. No Java sources or binaries.
+- [`PROTOCOL.md`](PROTOCOL.md): message formats and connection ownership.
+
+The model tracks motor enable, mode, power/speed, and encoders. It retains basic
+servo register handling for BioBuzz, but has no field physics, pose or Pedro
+localization service. The BioBuzz copy uses an example-only stationary localizer.
+Camera, I2C sensor models, Android UI/services, and a physical FTC DS connection
+are not implemented. JSON DS messages replace Robocol packets; real SDK gamepads,
+controllers, telemetry composition, and iterative/linear lifecycle execution remain.
+
+## Validation
 
 ```sh
-./bin/biobuzz
+cd sdk/desktop
+./gradlew build :runtime:writeClasspath :biobuzz:writeClasspath
+cd ../../sim
+python3 -m unittest discover -s tests -v
 ```
 
-No Gradle, Android SDK, source checkout or Python packages are needed to run that
-package; only Java and Python. The SDK distribution is a separate library bundle
-for consumers who want the custom SDK without the simulator driver.
+Integration tests launch the built SDK and exercise both WebSockets, lifecycle,
+configuration, two gamepads, actual Lynx payloads/response decoders, telemetry,
+BioBuzz motor activation/release, and disconnect handling. These tests do not
+validate complete physical hardware behavior.
 
-## SDK development
-
-- [SDK overview](sdk/README.md)
-- [JVM library/compatibility details](sdk/jvm/README.md)
-- [Simulator driver/protocol](simulator/README.md)
-- [Extraction provenance](sdk/EXTRACTED-SDK.md)
-
-The Android workspace is preserved under `sdk/`. Open that folder in Android
-Studio, or build it independently with `./gradlew -p sdk :TeamCode:assembleDebug`.
-The root Gradle build is the desktop build and does not require an Android SDK.
-
-This is a headless runtime with idealized hardware and motion. It is not a full
-Android Robot Controller app port, a calibrated physics engine, or a validated
-match/autonomous simulator. Original FTC and third-party licenses are retained.
+The previous implementation is preserved on Git branch `archive/native-tcp` at
+`0a35cc6`. The original BioBuzz checkout is not a build input and remains untouched.

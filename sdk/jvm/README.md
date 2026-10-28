@@ -1,49 +1,39 @@
-# FTC SDK JVM library
+# JVM SDK library
 
-This Gradle subproject compiles the eight editable SDK modules in `sdk/` into
-`ftc-sdk-jvm-12.0.0.jar`. It has no dependency on the simulator project or BioBuzz.
+This project compiles the eight extracted modules plus desktop platform adapters.
+Build it with `../desktop/gradlew -p ../desktop :sdk:build` from this directory.
+The resulting SDK JAR and source JAR are in `build/libs/`.
 
-From the repository root:
+SDK classes keep their upstream namespaces. Desktop-only Android adapters compile
+separately against the original Android API definitions, then enter the SDK JAR.
+Keep that SDK JAR before Android API-linking JARs on the runtime classpath.
+
+`ftcsim.jvm.DesktopRuntime.initialize()` installs the headless application context
+and registers standard motor/servo configuration types. That function is only the
+platform bootstrap. `ftcsim.jvm.DesktopSdk` in `../runtime/` is the normal desktop
+entry point: it also connects the shared simulator WebSocket, installs the optional
+DS output transport, and opens the DS listener before starting an OpMode.
+
+From `../desktop/`:
 
 ```sh
-./gradlew :sdk:build :sdk:distZip
+./gradlew :runtime:writeClasspath
+java -Dftcsim.jvm=true -cp "$(cat ../runtime/build/classpath.txt):/path/to/robot.jar" \
+  ftcsim.jvm.DesktopSdk --opmode my.robot.TeleOp --config /path/to/robot.json
 ```
 
-The ZIP contains `lib/` (SDK plus third-party JARs), `sources/`, README files and
-the original FTC license. Keep the SDK JAR first on the runtime classpath so its
-desktop platform adapters take precedence over Android API-linking classes:
+Repeat `--opmode` to register additional classes. The host reads the real
+`@TeleOp`/`@Autonomous` names and skips `@Disabled` classes; it does not scan arbitrary
+classpath JARs. Robot classes must have a public no-argument constructor. The core
+and runtime can also be used as Gradle library projects. Third-party robot-library
+dependencies belong to the robot project, as shown in `../examples/biobuzz/`.
 
-```text
-java -cp 'lib/ftc-sdk-jvm-12.0.0.jar:lib/*:your-application.jar' your.Main
-```
+CLI options are `--sim ws://localhost:9015/sim`, `--ds-port 1115`, `--opmode CLASS`,
+and `--config FILE`. Configuration files contain a `devices` array of objects with
+`name`, `type` (`motor` or `servo`), `module` (1–254), and `port` (0–3 or 0–5).
+The browser may replace the configuration while no OpMode is active.
 
-Initialize the runtime before using SDK facilities that need an application
-context:
-
-```java
-android.app.Application context = ftcsim.jvm.DesktopRuntime.initialize();
-```
-
-The package retains upstream Java namespaces. A consumer can select an alternate
-Lynx transport by implementing `com.qualcomm.hardware.lynx.LynxCommandTransport`
-and calling `module.setCommandTransport(transport)`. The existing dangerous-command
-guard is preserved. The TCP implementation and `DesktopHub` factory live in the
-separate simulator driver package, not this SDK library.
-
-The library compiles against Android API definitions from `android-all` and uses
-small desktop adapters for logging, clocks, string resources, system properties,
-and the headless application context. `DesktopRuntime` selects `ftcsim.jvm=true`
-and registers the basic motor/servo configuration types. It does not start
-Android services or load ARM JNI. Generated `R` symbols are for desktop linking;
-they are not a compiled Android resource APK.
-
-All SDK modules compile, but Android UI, USB discovery, camera native pipelines,
-Blocks WebView execution, OnBotJava Android services, Driver Station networking
-and the full Android event loop are not desktop implementations. The simulator
-supplies a separate iterative lifecycle runner. LinearOpMode remains unsupported
-there. The verified headless paths are the standard Lynx motor/servo controllers,
-bulk reads and the copied BioBuzz TeleOp exercised by simulator integration tests.
-
-The FTC source license is preserved in the parent directory. Dependencies retain
-their own embedded notices. See `sdk/README.md` in the repository for extraction
-provenance and independent Android build instructions.
+The runtime supports actual iterative and linear SDK execution through a small
+package-access adapter. It does not run the Android OpModeManager, Wi-Fi discovery,
+USB discovery, camera native pipelines, Blocks UI, or OnBotJava services. Transport
+hooks and compatibility adapters do not make every Android API desktop-compatible.

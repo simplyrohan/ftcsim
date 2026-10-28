@@ -1,0 +1,21 @@
+plugins { id 'java-library' }
+group = 'org.ftcsim'
+version = '0.2.0'
+base { archivesName = 'ftc-desktop-runtime' }
+repositories { mavenCentral() }
+dependencies {
+    api project(':sdk')
+    implementation('org.nanohttpd:nanohttpd-websocket:2.3.1') { transitive = false }
+}
+java { sourceCompatibility = JavaVersion.VERSION_11; targetCompatibility = JavaVersion.VERSION_11; withSourcesJar() }
+tasks.named('compileJava') { options.release = 11; options.encoding = 'UTF-8' }
+tasks.register('writeClasspath') {
+    dependsOn 'classes', ':sdk:jar'
+    doLast { file('build/classpath.txt').text = sourceSets.main.runtimeClasspath.asPath }
+}
+tasks.register('run', JavaExec) {
+    dependsOn 'classes'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'ftcsim.jvm.DesktopSdk'
+    systemProperty 'ftcsim.jvm', 'true'
+}

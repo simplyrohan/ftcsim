@@ -1,55 +1,50 @@
 # Custom FTC SDK 12.0.0
 
-This directory contains the extracted FTC SDK, its Android controller workspace,
-and a separate JVM library build. The desktop simulator lives in `../simulator/`.
+The editable FIRST SDK and all desktop Java code live here. The Python simulator
+is independent in `../sim/`. No desktop Java code lives in that server.
 
-The editable modules are RobotCore, RobotServer, Hardware, Inspection, FtcCommon,
-Vision, Blocks and OnBotJava. The Android project retains the upstream dependency
-graph and resource/native assets. FtcRobotController and TeamCode are retained as
-the Android application workspace.
+## Desktop build
 
-## JVM package
-
-From the repository root:
+With JDK 17+, from this directory:
 
 ```sh
-./gradlew :sdk:build :sdk:distZip
+cd desktop
+./gradlew build
+./gradlew :runtime:run           # built-in iterative and linear motor examples
+# Or, in place of runtime:run:
+./gradlew :biobuzz:run           # isolated BioBuzz snapshot
 ```
 
-`jvm/build/libs/ftc-sdk-jvm-12.0.0.jar` contains compiled SDK classes and the small
-desktop platform compatibility layer. The companion `-sources.jar` contains the
-editable sources. `jvm/build/distributions/ftc-sdk-jvm-12.0.0.zip` bundles these with
-all required third-party JARs, license notices and usage documentation.
+Start the Python simulator first. The SDK connects once to
+`ws://localhost:9015/sim` during bootstrap and listens at
+`http://localhost:1115` / `ws://localhost:1115/ds` before any OpMode is constructed.
+Every hub shares that simulator socket for the SDK lifetime. Transport loss stops
+the robot and requires an SDK restart; it never silently reconnects with stale
+controller caches.
 
-This package does not contain the simulator's TCP driver, robot code, dashboard,
-or Pedro/SolversLib dependencies. See [JVM details](jvm/README.md) for runtime
-initialization and compatibility limits.
+| Project | Purpose | Output |
+| --- | --- | --- |
+| `jvm/` (`:sdk`) | Upstream classes and desktop platform shims | `jvm/build/libs/ftc-sdk-jvm-12.0.0.jar` |
+| `runtime/` | SDK bootstrap, hardware factory, Lynx WS client, DS HTTP/WS server | `runtime/build/libs/ftc-desktop-runtime-0.2.0.jar` |
+| `examples/biobuzz/` | Copied robot code and its own Pedro/SolversLib dependencies | robot example JAR |
+
+Core and runtime also build source JARs. There are no distribution/archive tasks.
+The reusable runtime has no dependency on BioBuzz, Pedro, or a Python launcher.
+See [JVM details](jvm/README.md) and [upstream patch inventory](DESKTOP-PATCHES.md).
 
 ## Android workspace
 
-Open this directory in Android Studio, or run from the repository root:
+This directory remains the independent Android project. Use its own wrapper:
 
 ```sh
-./gradlew -p sdk :TeamCode:assembleDebug
+./gradlew :TeamCode:assembleDebug
 ```
 
-Configure `sdk/local.properties` with your Android SDK path. The root wrapper is
-shared; the nested `sdk/settings.gradle` selects the independent Android build.
+Configure `local.properties` with the Android SDK location. Desktop sources and
+compatibility shims are excluded from this build. Optional transports default to
+null, so the original Android transport path is retained.
 
-## Custom changes and provenance
-
-- `LynxModule.setCommandTransport()` permits a synchronous command transport in
-  place of USB. Its default remains the original Android USB transport.
-- `LynxRespondable` exposes the expected response schema and decodes remote
-  response payloads using real SDK response classes.
-- AppUtil skips ARM JNI loading when `ftcsim.jvm=true` is explicitly selected.
-- JVM-only Android adapters are in `jvm/src/desktop/java`; they are not compiled
-  into the Android app.
-
-[EXTRACTED-SDK.md](EXTRACTED-SDK.md) records the upstream controller revision and
-artifact extraction. `sdk-artifacts.sha256.json` pins the 24 published inputs.
-`tools/extract_sdk.py` regenerates the extracted modules. Regeneration overwrites
-native-branch SDK edits, which must be reapplied afterward.
-
-The original upstream controller README is preserved as
-[UPSTREAM-README.md](UPSTREAM-README.md), and the FTC license is in [LICENSE](LICENSE).
+[EXTRACTED-SDK.md](EXTRACTED-SDK.md) records extraction and artifact hashes.
+`tools/extract_sdk.py` overwrites extracted sources; reapply the documented small
+patches after regeneration. The upstream README and FTC license remain in
+[UPSTREAM-README.md](UPSTREAM-README.md) and [LICENSE](LICENSE).

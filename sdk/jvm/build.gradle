@@ -1,4 +1,4 @@
-plugins { id 'java-library'; id 'distribution' }
+plugins { id 'java-library' }
 apply from: rootProject.file('gradle/jvm-dependencies.gradle')
 group = 'org.ftcsim'
 version = '12.0.0'
@@ -49,17 +49,4 @@ tasks.named('sourcesJar') {
     dependsOn 'classes'
     from sourceSets.desktop.allSource
     from('../LICENSE') { into 'META-INF'; rename { 'FTC-SDK-LICENSE' } }
-}
-distributions {
-    main {
-        distributionBaseName = 'ftc-sdk-jvm'
-        contents {
-            into('lib') { from tasks.named('jar'); from libraryJars; from bundled }
-            into('sources') { from tasks.named('sourcesJar') }
-            from '../LICENSE'
-            from '../README.md'
-            from '../EXTRACTED-SDK.md'
-            from('README.md') { rename { 'JVM.md' } }
-        }
-    }
 }

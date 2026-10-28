@@ -1,0 +1,3 @@
+plugins { id 'base' }
+tasks.named('build') { dependsOn ':sdk:build', ':runtime:build', ':biobuzz:build' }
+tasks.named('check') { dependsOn ':sdk:check', ':runtime:check', ':biobuzz:check' }
