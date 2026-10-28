@@ -42,7 +42,7 @@ def main(argv=None):
         if args.port is not None:
             parser.error('--port is a simulator option and cannot be used with --wizard')
         return wizard.run(args)
-    if any((args.sdk, args.copy_sdk, args.opmode, args.robot_xml, args.kotlin_version, args.dry_run, args.yes, args.force)) or args.project != Path.cwd():
+    if any((args.sdk, args.copy_sdk, args.opmode, args.kotlin_version, args.dry_run, args.yes, args.force)) or args.project != Path.cwd():
         parser.error('Project setup options require --wizard')
     if args.port is None:
         args.port = 9015

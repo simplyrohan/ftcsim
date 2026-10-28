@@ -5,7 +5,6 @@ import com.google.gson.*;
 import com.qualcomm.hardware.lynx.*;
 import com.qualcomm.hardware.lynx.commands.standard.LynxFailSafeCommand;
 import com.qualcomm.robotcore.hardware.*;
-import com.qualcomm.robotcore.hardware.configuration.ConfigurationTypeManager;
 import java.util.*;
 
 /** Configured names become genuine SDK controllers/devices backed by remote Lynx modules. */
@@ -13,8 +12,10 @@ final class HardwareFactory implements AutoCloseable {
     final HardwareMap map;
     final Map<Integer, DesktopHub> hubs = new LinkedHashMap<>();
     final List<LynxController> controllers = new ArrayList<>();
+    final List<HardwareDevice> devicesToClose = new ArrayList<>();
     HardwareFactory(Application context, SimulatorTransport transport, JsonArray devices) throws Exception {
         validate(devices);
+        transport.configure(devices);
         map = new HardwareMap(context, null);
         Map<Integer, LynxDcMotorController> motors = new HashMap<>();
         Map<Integer, LynxServoController> servos = new HashMap<>();
@@ -28,9 +29,9 @@ final class HardwareFactory implements AutoCloseable {
                     LynxServoController sc = new LynxServoController(context, hub);
                     motors.put(module, mc); servos.put(module, sc); controllers.add(mc); controllers.add(sc);
                 }
-                HardwareDevice device = d.get("type").getAsString().equals("motor")
-                        ? new DcMotorImplEx(motors.get(module), port)
-                        : new ServoImplEx(servos.get(module), port, ConfigurationTypeManager.getInstance().getStandardServoType());
+                DesktopDeviceDrivers.Binding binding = DesktopDeviceDrivers.TYPES.get(d.get("type").getAsString());
+                HardwareDevice device = binding.factory.create(context, hubs.get(module), port, motors.get(module), servos.get(module));
+                devicesToClose.add(device);
                 map.put(d.get("name").getAsString(), device);
             }
             failsafe();
@@ -43,10 +44,13 @@ final class HardwareFactory implements AutoCloseable {
             JsonObject d = item.getAsJsonObject();
             String name = d.get("name").getAsString(), type = d.get("type").getAsString();
             int module = integer(d, "module"), port = integer(d, "port");
-            if (!(type.equals("motor") || type.equals("servo"))) throw new IllegalArgumentException("Supported device types: motor, servo");
-            if (module < 1 || module > 254 || port < 0 || port >= (type.equals("motor") ? 4 : 6)) throw new IllegalArgumentException("Invalid hub address or port");
-            if (name.trim().isEmpty() || name.matches("hub[0-9]+") || !names.add(name) || !ports.add(module + ":" + type + ":" + port))
+            DesktopDeviceDrivers.Binding binding = DesktopDeviceDrivers.TYPES.get(type);
+            if (binding == null) throw new IllegalArgumentException("Supported device types: " + DesktopDeviceDrivers.TYPES.keySet());
+            if (module < 1 || module > 254 || port < 0 || port >= binding.ports) throw new IllegalArgumentException("Invalid hub address or port");
+            if (name.trim().isEmpty() || name.matches("hub[0-9]+") || !names.add(name) || !ports.add(module + ":" + binding.connection + ":" + port))
                 throw new IllegalArgumentException("Duplicate/reserved name or duplicate port: " + name);
+            if (type.equals("motor") && !ports.add(module + ":encoder:" + port))
+                throw new IllegalArgumentException("Encoder port occupied: " + name);
         }
     }
     private static int integer(JsonObject d, String key) {
@@ -58,5 +62,9 @@ final class HardwareFactory implements AutoCloseable {
         for (DesktopHub hub : hubs.values()) try { new LynxFailSafeCommand(hub).send(); } catch (Exception ignored) { }
         for (LynxController c : controllers) c.forgetLastKnown();
     }
-    @Override public void close() { failsafe(); for (DesktopHub hub : hubs.values()) hub.close(); }
+    @Override public void close() {
+        failsafe();
+        for (HardwareDevice device : devicesToClose) try { device.close(); } catch (RuntimeException ignored) { }
+        for (DesktopHub hub : hubs.values()) hub.close();
+    }
 }

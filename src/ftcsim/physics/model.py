@@ -1,66 +1,94 @@
-"""Independent hub/motor model. No robot code, gamepads, lifecycle or localization."""
-import math
+"""Hub protocol routing and physical driver topology. No OpMode/DS lifecycle."""
 import struct
 from .registers import HubState
+from ..drivers import BodyMotion, DCMotor, Servo, Encoder, I2CDriver, DRIVERS
+from ..drivers.base import number
+from ..drivers.i2c import I2CBus
 
 
-class MotorHub(HubState):
-    MAX_TICKS_PER_SECOND = 2800
-
-    def __init__(self):
+class Hub(HubState):
+    def __init__(self, address):
         super().__init__()
-        self.positions = [0.0] * 4
-        self.velocities = [0.0] * 4
+        self.address = address
+        # Real SDK controllers initialize every channel, even unused channels.
+        self.motors = [DCMotor(f'hub{address}:motor{i}', i) for i in range(4)]
+        self.servos = [Servo(f'hub{address}:servo{i}', i) for i in range(6)]
+        self.encoder_inputs = list(self.motors)
+        self.buses = [I2CBus() for _ in range(4)]
+        self.devices = []
+        self.connections = set()
 
-    def mode(self, port):
-        return self.registers.get(('MotorChannelMode', port), b'\x00\x01')[0]
+    def attach(self, device):
+        connection, port = device.connection, device.port
+        slots = {(connection, port)}
+        if isinstance(device, DCMotor):
+            slots.add(('encoder', port))
+        if slots & self.connections:
+            raise ValueError(f'Hub {self.address}: occupied {connection} port {port}')
+        self.connections.update(slots)
+        if isinstance(device, DCMotor):
+            self.motors[port] = device
+            self.encoder_inputs[port] = device
+        elif isinstance(device, Encoder):
+            self.encoder_inputs[port] = device
+        elif isinstance(device, Servo):
+            self.servos[port] = device
+        elif isinstance(device, I2CDriver):
+            self.buses[port].attach(device)
+        else:
+            raise ValueError(f'Unsupported hub connection: {connection}')
+        self.devices.append(device)
 
-    def enabled(self, port):
-        return bool(self.registers.get(('MotorChannelEnable', port), b'\x00')[0])
+    def advance(self, dt, motion):
+        # All hidden hardware channels also participate in failsafe and dynamics.
+        drivers = dict.fromkeys([*self.motors, *self.servos, *self.devices])
+        for device in drivers:
+            device.advance(dt, motion)
 
-    def power(self, port):
-        if not self.enabled(port):
-            return 0.0
-        if self.mode(port) in (1, 2):
-            velocity, = struct.unpack('<h', self.registers.get(('MotorTargetVelocity', port), bytes(2)))
-            return max(-1, min(1, velocity / self.MAX_TICKS_PER_SECOND))
-        value, = struct.unpack('<h', self.registers.get(('MotorConstantPower', port), bytes(2)))
-        return max(-1, min(1, value / 32767))
-
-    def advance(self, dt):
-        for port in range(4):
-            velocity = self.power(port) * self.MAX_TICKS_PER_SECOND
-            if self.mode(port) == 2:
-                target, tolerance = struct.unpack('<iH', self.registers.get(('MotorTargetPosition', port), bytes(6)))
-                delta = target - self.positions[port]
-                velocity = (math.copysign(min(abs(velocity), abs(delta) / dt), delta)
-                            if dt and abs(delta) > tolerance else 0)
-            self.velocities[port] = velocity
-            self.positions[port] += velocity * dt
-            # Hub encoders are signed 32-bit counters.
-            self.encoders[port] = (int(self.positions[port]) + 2**31) % 2**32 - 2**31
+    def failsafe(self):
+        for device in dict.fromkeys([*self.motors, *self.servos, *self.devices]):
+            device.failsafe()
 
     def dispatch(self, request):
         name = request['command'].rsplit('.', 1)[-1]
         data = bytes.fromhex(request['payload'])
-        if name in ('LynxResetMotorEncoderCommand', 'LynxGetMotorEncoderPositionCommand', 'LynxIsMotorAtTargetCommand'):
-            if len(data) != 1 or data[0] >= 4:
-                raise ValueError('Invalid motor port')
-        if name == 'LynxResetMotorEncoderCommand':
-            self.positions[data[0]] = 0
+        if name == 'LynxFailSafeCommand':
+            if data:
+                raise ValueError('Unexpected failsafe payload')
+            self.failsafe()
+            return b''
         if name == 'LynxGetBulkInputDataCommand':
-            return (struct.pack('<B4iB', self.digital_inputs, *self.encoders, 0)
-                    + struct.pack('<4h', *(int(v) for v in self.velocities))
-                    + struct.pack('<4H', *self.analog_inputs))
-        if name == 'LynxIsMotorAtTargetCommand':
-            target, tolerance = struct.unpack('<iH', self.registers.get(('MotorTargetPosition', data[0]), bytes(6)))
-            return bytes([abs(target - self.encoders[data[0]]) <= tolerance])
+            if data:
+                raise ValueError('Unexpected bulk payload')
+            encoders = [encoder.ticks for encoder in self.encoder_inputs]
+            velocities = [max(-32768, min(32767, int(encoder.velocity))) for encoder in self.encoder_inputs]
+            return struct.pack('<B4iB4h4H', self.digital_inputs, *encoders, 0, *velocities, *self.analog_inputs)
+        if name.startswith('LynxI2c'):
+            if not data or data[0] >= 4:
+                raise ValueError('Invalid I2C bus')
+            return self.buses[data[0]].handle_lynx(name, data[1:])
+        if 'Motor' in name:
+            if not data or data[0] >= 4:
+                raise ValueError('Invalid motor port')
+            port, payload = data[0], data[1:]
+            if name in ('LynxResetMotorEncoderCommand', 'LynxGetMotorEncoderPositionCommand', 'LynxIsMotorAtTargetCommand'):
+                if payload:
+                    raise ValueError('Unexpected encoder payload')
+                if name == 'LynxResetMotorEncoderCommand':
+                    self.encoder_inputs[port].reset()
+                    return b''
+                if name == 'LynxGetMotorEncoderPositionCommand':
+                    return struct.pack('<i', self.encoder_inputs[port].ticks)
+                return bytes([self.motors[port].at_target])
+            return self.motors[port].handle_lynx(name, payload)
+        if 'Servo' in name:
+            if not data or data[0] >= 6:
+                raise ValueError('Invalid servo port')
+            return self.servos[data[0]].handle_lynx(name, data[1:])
         return super().dispatch(request)
 
-    def snapshot(self, address):
-        return [dict(module=address, port=port, enabled=self.enabled(port), mode=self.mode(port),
-                     power=self.power(port), speed=self.velocities[port], encoder=self.encoders[port])
-                for port in range(4)]
+    def snapshot(self):
+        return [dict(device.snapshot(), module=self.address) for device in self.devices]
 
 
 class Robot:
@@ -68,35 +96,80 @@ class Robot:
         self.hubs = {}
         self.command_count = 0
         self.connected = False
+        self.motion = BodyMotion()
+
+    def configure(self, devices, *, validate_only=False):
+        if not isinstance(devices, list) or len(devices) > 256:
+            raise ValueError('Expected a list of at most 256 devices')
+        hubs, names = {}, set()
+        for definition in devices:
+            if not isinstance(definition, dict):
+                raise ValueError('Expected a device object')
+            address = definition.get('module')
+            if type(address) is not int or not 1 <= address <= 254:
+                raise ValueError('Invalid hub address')
+            driver = DRIVERS.create(definition, names)
+            if address not in hubs:
+                hubs[address] = Hub(address)
+            hubs[address].attach(driver)
+        # Construct/validate everything before replacing live state.
+        if validate_only:
+            return
+        self.failsafe()
+        self.hubs = hubs
+
+    def set_motion(self, vx=0, vy=0, angular_velocity=0):
+        values = [number(value, label) for value, label in [(vx, 'vx'), (vy, 'vy'), (angular_velocity, 'angular_velocity')]]
+        if any(abs(value) > limit for value, limit in zip(values, [10000, 10000, 100])):
+            raise ValueError('Motion input exceeds 10000 mm/s or 100 rad/s')
+        self.motion = BodyMotion(*values)
 
     def failsafe(self):
+        self.motion = BodyMotion()
         for hub in self.hubs.values():
-            hub.dispatch(dict(command='LynxFailSafeCommand', payload=''))
-            hub.velocities = [0.0] * 4
+            hub.failsafe()
 
     def exchange(self, request):
         identifier = request.get('id')
+        kind = request.get('type')
         try:
-            if request.get('version') != 1 or request.get('type') != 'lynx':
-                raise ValueError('Expected version 1 Lynx request')
+            if request.get('version') != 1 or type(identifier) is not int:
+                raise ValueError('Expected protocol version 1 and integer id')
+            if kind == 'configure':
+                validate_only = request.get('validateOnly', False)
+                if type(validate_only) is not bool:
+                    raise ValueError('validateOnly must be a boolean')
+                self.configure(request['devices'], validate_only=validate_only)
+                return dict(type=kind, id=identifier, status='ack', payload='')
+            if kind != 'lynx':
+                raise ValueError('Expected Lynx or configuration request')
             address = request['module']
-            if type(identifier) is not int or type(address) is not int or not 1 <= address <= 254:
-                raise ValueError('Invalid id or module')
+            if type(address) is not int or not 1 <= address <= 254:
+                raise ValueError('Invalid module')
             if not isinstance(request['command'], str) or not isinstance(request['payload'], str):
                 raise ValueError('Expected command and hex payload strings')
             bytes.fromhex(request['payload'])
-            payload = self.hubs.setdefault(address, MotorHub()).dispatch(request)
+            if address not in self.hubs:
+                raise ValueError(f'Hub {address} is not configured')
+            payload = self.hubs[address].dispatch(request)
+            if request['command'].rsplit('.', 1)[-1] == 'LynxFailSafeCommand':
+                self.motion = BodyMotion()
             self.command_count += 1
-            return dict(type='lynx', id=identifier, status='response' if request.get('response') else 'ack', payload=payload.hex())
+            return dict(type=kind, id=identifier, status='response' if request.get('response') else 'ack', payload=payload.hex())
         except NotImplementedError:
-            return dict(type='lynx', id=identifier, status='nack', reason=255)
+            return dict(type=kind, id=identifier, status='nack', reason=255)
         except (ValueError, KeyError, TypeError, IndexError, struct.error) as error:
-            return dict(type='lynx', id=identifier, status='error', message=str(error))
+            return dict(type=kind, id=identifier, status='error', message=str(error))
 
     def advance(self, dt):
+        dt = number(dt, 'dt')
+        if dt < 0:
+            raise ValueError('dt must be non-negative')
         for hub in self.hubs.values():
-            hub.advance(dt)
+            hub.advance(dt, self.motion)
 
     def snapshot(self):
+        devices = [device for _, hub in sorted(self.hubs.items()) for device in hub.snapshot()]
         return dict(type='state', connected=self.connected, commands=self.command_count,
-                    motors=[m for address, hub in sorted(self.hubs.items()) for m in hub.snapshot(address)])
+                    devices=devices, motion=dict(vx=self.motion.vx, vy=self.motion.vy,
+                                               angular_velocity=self.motion.angular_velocity))

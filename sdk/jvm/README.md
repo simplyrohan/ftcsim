@@ -19,7 +19,7 @@ From `../desktop/`:
 ```sh
 ./gradlew :runtime:writeClasspath
 java -Dftcsim.jvm=true -cp "$(cat ../runtime/build/classpath.txt):/path/to/robot.jar" \
-  ftcsim.jvm.DesktopSdk --opmode my.robot.TeleOp --config /path/to/robot.json
+  ftcsim.jvm.DesktopSdk --opmode my.robot.TeleOp
 ```
 
 Repeat `--opmode` to register additional classes. The host reads the real
@@ -28,10 +28,14 @@ classpath JARs. Robot classes must have a public no-argument constructor. The co
 and runtime can also be used as Gradle library projects. Third-party robot-library
 dependencies belong to the robot project.
 
-CLI options are `--sim ws://localhost:9015/sim`, `--ds-port 1115`, `--opmode CLASS`,
-and `--config FILE`. Configuration files contain a `devices` array of objects with
-`name`, `type` (`motor` or `servo`), `module` (1–254), and `port` (0–3 or 0–5).
-The browser may replace the configuration while no OpMode is active.
+CLI options are `--sim ws://localhost:9015/sim`, `--ds-port 1115`, and
+`--opmode CLASS`. Hardware starts empty. The browser Driver Station owns the map,
+saves it in localStorage, and sends it over its `configure` message while stopped.
+Use the `/ds/hardware` page before INIT; saved maps restore on reconnect.
+Device definitions contain `name`, `type` (`motor`, `servo`, `odometry`, or
+`pinpoint`), `module` (1–254), and `port` (0–3, or 0–5 for servos). Pinpoint accepts
+nested `children` with odometry pods on `x`/`y` ports.
+See [driver configuration](../../DRIVERS.md).
 
 The runtime supports actual iterative and linear SDK execution through a small
 package-access adapter. It does not run the Android OpModeManager, Wi-Fi discovery,

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ftcsim"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Desktop FTC SDK simulator and project setup wizard"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,5 +18,8 @@ ftcsim = "ftcsim.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.dynamic]
+version = {attr = "ftcsim.__version__"}
+
 [tool.setuptools.package-data]
-ftcsim = ["ds/*.html", "templates/*.txt", "sdk/libs/*.jar", "sdk/*.json", "sdk/LICENSE"]
+ftcsim = ["ds/*.html", "ds/assets/*.js", "ds/assets/widgets/*.js", "templates/*.txt", "sdk/libs/*.jar", "sdk/*.json", "sdk/LICENSE"]

@@ -7,7 +7,6 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 import java.net.URI;
 import org.firstinspires.ftc.robotcore.internal.network.*;
 import com.qualcomm.robotcore.robocol.*;
-import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -25,6 +24,7 @@ public final class DesktopSdk implements AutoCloseable {
     private String selected = "", state = "idle", error = "";
     private volatile boolean closing;
     private boolean poisoned;
+    private boolean hardwareConfigured;
     private long lastGamepad;
 
     public DesktopSdk(URI endpoint, int dsPort, JsonArray configuration, List<String> opmodes) throws Exception {
@@ -38,6 +38,7 @@ public final class DesktopSdk implements AutoCloseable {
             if (!opmodes.isEmpty()) selected = new ArrayList<>(modes.keySet()).get(modes.size() - 1);
             devices = new JsonParser().parse(configuration.toString()).getAsJsonArray();
             hardware = new HardwareFactory(context, simulator, devices);
+            hardwareConfigured = devices.size() > 0;
             NetworkConnectionHandler.setDriverStationTransport(new DriverStationTransport() {
                 public void sendCommand(Command command) {
                     JsonObject message = new JsonObject(); message.addProperty("type", "command");
@@ -72,7 +73,7 @@ public final class DesktopSdk implements AutoCloseable {
             JsonObject item = new JsonObject(); item.addProperty("name", name); item.addProperty("class", type.getName());
             item.addProperty("flavor", type.isAnnotationPresent(Autonomous.class) ? "autonomous" : "teleop"); list.add(item);
         });
-        message.add("opmodes", list); message.add("devices", devices); ds.hello(message);
+        message.add("opmodes", list); message.add("devices", devices); message.addProperty("hardwareConfigured", hardwareConfigured); ds.hello(message);
     }
     private void publishState() {
         JsonObject message = new JsonObject(); message.addProperty("type", "status"); message.addProperty("state", state);
@@ -134,11 +135,24 @@ public final class DesktopSdk implements AutoCloseable {
                 requireInactive();
                 JsonArray proposed = data.getAsJsonArray("devices");
                 HardwareFactory.validate(proposed);
-                HardwareFactory next = new HardwareFactory(context, simulator, proposed);
-                hardware.close(); hardware = next; devices = new JsonParser().parse(proposed.toString()).getAsJsonArray(); publishHello(); break;
+                // Preflight the complete physical tree before retiring the current SDK objects.
+                simulator.validateConfiguration(proposed);
+                // Close against the old topology; old hubs must not address the new one.
+                hardware.close();
+                try { hardware = new HardwareFactory(context, simulator, proposed); }
+                catch (Exception failure) {
+                    try { hardware = new HardwareFactory(context, simulator, devices); }
+                    catch (Exception restoreFailure) {
+                        failure.addSuppressed(restoreFailure); poisoned = true; simulator.close();
+                        state = "error"; error = "Hardware reconfiguration failed; restart the SDK";
+                    }
+                    throw failure;
+                }
+                devices = new JsonParser().parse(proposed.toString()).getAsJsonArray(); hardwareConfigured = true; publishHello(); break;
             }
             case "init":
-                requireInactive(); hardware.failsafe(); error = ""; requestedStop.set(false);
+                requireInactive();
+                if (!hardwareConfigured) throw new IllegalStateException("Apply a hardware map from the Driver Station before INIT"); hardware.failsafe(); error = ""; requestedStop.set(false);
                 one = new Gamepad(); two = new Gamepad();
                 active = modes.get(selected).getDeclaredConstructor().newInstance();
                 try { DesktopLifecycle.init(active, hardware.map, this::telemetry, () -> requestedStop.set(true)); state = "initialized"; }
@@ -195,13 +209,12 @@ public final class DesktopSdk implements AutoCloseable {
     public static void main(String[] args) throws Exception {
         URI endpoint = URI.create("ws://localhost:9015/sim"); int port = 1115;
         List<String> opmodes = new ArrayList<>();
-        JsonArray devices = new JsonParser().parse("[{\"name\":\"motor\",\"type\":\"motor\",\"module\":1,\"port\":0}]").getAsJsonArray();
+        JsonArray devices = new JsonArray();
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--sim": endpoint = URI.create(args[++i]); break;
                 case "--ds-port": port = Integer.parseInt(args[++i]); break;
                 case "--opmode": opmodes.add(args[++i]); break;
-                case "--config": devices = new JsonParser().parse(Files.readString(Path.of(args[++i]))).getAsJsonObject().getAsJsonArray("devices"); break;
                 default: throw new IllegalArgumentException("Unknown argument: " + args[i]);
             }
         }

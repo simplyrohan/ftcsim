@@ -14,14 +14,18 @@ Install ftcsim with pipx or pip before running these tasks. The backend uses the
 Python executable recorded by the wizard; -PsimPython overrides it.
 Open http://localhost:9015/ds after starting both tasks.
 
-Review robot.json BEFORE INIT. Without --robot-xml the wizard creates an empty
-configuration: configure motor/servo ports in the browser DS, or import your XML.
-Unknown XML devices are recorded in unsupportedDevices rather than fabricated.
-Pinpoint, IMU, camera, settings services, and other Android/vendor facilities need
-actual desktop SDK support. Installing this target does not implement them.
+Open the Driver Station's Hardware map page before INIT. Add drivers, choose
+names matching your robot code, set hub/port assignments, and configure device
+options and nested Pinpoint pods. Changes are saved in the browser's localStorage
+for the simulator origin and SDK address. Apply the map while stopped; that DS
+restores it automatically when reconnecting. The SDK begins with no configured
+hardware. Clearing browser storage removes the saved map.
+
+Other IMUs, cameras, settings services, and vendor facilities still require
+actual desktop SDK support.
 
 Run options: -PsimOpmodes=my.robot.TeleOp,my.robot.Auto,
--PsimConfig=/path/to/robot.json, -PsimEndpoint=ws://localhost:9015/sim,
+-PsimEndpoint=ws://localhost:9015/sim,
 -PsimDsPort=1115. OpMode discovery is heuristic and covers top-level annotated
 classes. Specify nested/generated classes explicitly with --opmode or simOpmodes.
 
@@ -45,9 +49,9 @@ support; adjust the FTC Robot module selector if your IDE names modules differen
 
 Generated build/adapter/README/run-configuration files are wizard-owned. Re-running
 the wizard preserves user changes elsewhere in the Gradle files, and refuses to
-overwrite edits to generated files unless --force is supplied. robot.json and
-extra-dependencies.gradle are user-owned and preserved by default. Supplying
---robot-xml explicitly replaces robot.json with a backed-up import.
+overwrite edits to generated files unless --force is supplied.
+extra-dependencies.gradle is user-owned and preserved. Hardware configuration is
+owned by the Driver Station browser; the wizard does not read or write it.
 
 Backups are in .ftcsim/backups. Installation rolls back completed writes on failure.
 The wizard does not change TeamCode sources, motor constants, localization, the

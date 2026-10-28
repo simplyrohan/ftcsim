@@ -14,6 +14,21 @@ correlated independently. No automatic reconnection occurs after transport loss.
 {"version":1,"type":"lynx","id":1,"module":1,"command":"com.qualcomm.hardware.lynx.commands.core.LynxSetMotorConstantPowerCommand","payload":"00ff7f","response":null}
 ```
 
+Before constructing SDK controllers, the runtime synchronizes the configured
+physical topology on this same connection:
+
+```json
+{"version":1,"type":"configure","id":1,"devices":[{"name":"motor","type":"motor","module":1,"port":0}]}
+```
+
+Python validates the entire tree and atomically replaces it. A successful reply
+is `{"type":"configure","id":1,"status":"ack","payload":""}`; invalid topology
+returns `status:"error"` with a message and leaves the physical model unchanged.
+Setting `validateOnly:true` validates without changing physical state; the SDK
+uses this preflight before closing old hardware during reconfiguration.
+Commands for unconfigured hubs are rejected. See [DRIVERS.md](DRIVERS.md) for the
+built-in catalog, nested encoder inputs, and configuration options.
+
 Writes return `{"type":"lynx","id":1,"status":"ack","payload":""}`.
 Reads return `status:"response"` with hex payload, decoded by the original SDK
 response class. Unsupported commands return `status:"nack",reason:255`; malformed
@@ -34,8 +49,8 @@ no Origin header. `GET http://localhost:1115` reports service/version/WS path.
 Clients may also use `/` for the upgrade. All DS messages are custom JSON: this is
 not Robocol framing and a physical FTC DS app cannot connect.
 
-On connect the SDK sends `role` (`controller:true` or `false`), `hello` (version,
-available OpModes, configured devices), `status`, and the latest `telemetry` if
+The SDK starts with an empty hardware map. On connect the SDK sends `role` (`controller:true` or `false`), `hello` (version,
+available OpModes, configured devices and `hardwareConfigured`), `status`, and the latest `telemetry` if
 available. Only the first connected client controls the robot. Others observe;
 they reconnect after the controller leaves to claim control. No browser-owned
 state is kept by Python.
@@ -80,3 +95,48 @@ FTC discovery/pairing, camera streaming, gamepad LED/rumble effects, and other D
 features are not implemented. The receive adapter intentionally does not start
 Android UDP/Wi-Fi services. Wire transport and lifecycle adapters are replaceable
 without changing robot programs.
+
+## Browser → Python: `/sim/drivers`
+
+A separate same-origin WebSocket streams a `drivers` catalog on connect, then
+physical `state` snapshots every 100 ms. This connection does not control OpModes,
+gamepads, or hardware power. Each snapshot contains `connected`, `commands`,
+`motion`, and `devices`. Each device has `name`, `type`, `connection`, `port`,
+`state`, and recursive `children`; root devices also contain `module`.
+`GET /sim/state` exposes the same snapshot for inspection.
+
+For explicit physical sensor inputs, this socket accepts
+`{"type":"motion","vx":100,"vy":0,"angular_velocity":0.2}`.
+Velocities are robot-relative forward/left mm/s and counterclockwise rad/s.
+Values must be finite and bounded to ±10000 mm/s and ±100 rad/s. Omitted fields
+are zero. Applying motion requires a connected SDK and returns `ack`/`error`.
+Motion persists until changed or a hub failsafe, SDK STOP/disconnect, or valid
+reconfiguration clears it. This input is independent of motor output until a
+chassis model is implemented. Multiple browser connections see the same state.
+
+## Browser-owned hardware configuration
+
+`GET /sim/driver-types` returns each built-in driver's label, connection type,
+port count, child connection/default rules, and constructor option metadata
+(labels, types, defaults, bounds, choices). The `/ds/hardware` page builds forms
+from this catalog. Navigation uses the same SDK control connection.
+
+Hardware maps live in localStorage under
+`ftcsim.hardware.v1:<encoded SDK WebSocket URL>` as `{version:1, devices:[...]}`.
+They are scoped by browser origin and SDK address. Changes save locally as drafts;
+Apply sends `configure` directly to the SDK. A saved map automatically restores
+to an idle SDK on reconnect. Observers cannot apply maps, and applying is blocked
+while an OpMode is initialized/running. SDK `hello` includes
+`hardwareConfigured:false` until a DS configuration succeeds, including when an
+explicitly empty map is applied. INIT requires that flag to be true. The DS also
+blocks INIT when local edits differ from the SDK's applied map.
+
+The SDK retains its live map only for its process lifetime. No map is fetched
+from the setup wizard, a robot XML, or a Gradle config file.
+
+Portable hardware-map files use
+`{format:"ftcsim.hardware-map", version:1, devices:[...], notes?:"..."}`.
+Import/export is entirely browser-side. Imported maps are structurally and
+semantically validated before localStorage is replaced; importing does not send
+`configure`. Applying still uses the same SDK message and inactive-state checks.
+Optional notes stay with local/file copies and are not sent to the SDK.

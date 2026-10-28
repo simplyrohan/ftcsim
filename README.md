@@ -1,6 +1,6 @@
 # ftcsim
 
-FTC SDK 12.0.0 on a desktop JVM, with a Python motor simulator and browser Driver
+FTC SDK 12.0.0 on a desktop JVM, with a Python device simulator and browser Driver
 Station. Install the Python package once, then configure any FTC robot project.
 
 ## Install and run
@@ -14,20 +14,33 @@ ftcsim
 
 `ftcsim` starts the simulator on IPv4 loopback port 9015. Open
 [the Driver Station](http://localhost:9015/ds). In another terminal in your robot
-project, run `./gradlew runSimulator` (JDK 17+ required), then select an OpMode,
-INIT, and START. The robot project compiles its TeamCode against the precompiled
+project, run `./gradlew runSimulator` (JDK 17+ required), select an OpMode,
+then open **Hardware map**, add your devices, and **Apply to SDK** before INIT
+and START. The robot project compiles its TeamCode against the precompiled
 SDK shipped in the Python package. End users do not need this source checkout or
 a build of the FTC SDK. `python -m ftcsim` is equivalent to the installed CLI.
 
 ```sh
 ftcsim --port 9016                  # use a different simulator port
 ftcsim -w --project /path/to/robot  # configure another project
-ftcsim -w --robot-xml robot.xml    # import motor/servo names and ports
 ftcsim -w --dry-run               # preview setup
 ftcsim -w --yes                   # noninteractive setup
 ftcsim -w --copy-sdk              # copy JARs rather than link this installation
 ftcsim --help
 ```
+
+Hardware maps belong to the Driver Station browser. The dedicated
+`/ds/hardware` page provides driver selection, names, hub/port assignments,
+device settings, and nested Pinpoint pod configuration. **Load from file** and
+**Save to file** import/export portable JSON maps. Drag-and-drop and
+**Paste JSON instead** also load maps when file dialogs are unavailable. Edits persist in
+localStorage per simulator origin and SDK address. Saved maps restore when the
+DS reconnects; a new SDK starts empty and waits for the DS to apply a map.
+Loaded maps display device counts and named driver cards immediately. If browser
+storage is blocked, the map remains usable in the current tab and can be saved to
+a file. Apply succeeds only after the SDK confirms the map and the simulator
+reports the matching physical devices, including nested encoders.
+The setup wizard does not request, import, or generate hardware configuration.
 
 For a custom port, launch the robot with
 `./gradlew runSimulator -PsimEndpoint=ws://localhost:9016/sim`.
@@ -71,26 +84,31 @@ cd ../..
 ```
 
 `python3 scripts/build_sdk.py` explicitly refreshes the packaged binaries.
-See [the simulator reference](docs/simulator.md) for endpoints and model details.
+See [the driver guide](DRIVERS.md) for device configuration, modeling, and extension.
 
 ## Architecture and limits
 
 - `src/ftcsim/`: CLI, setup wizard, Gradle templates, HTTP/WebSocket server,
-  motor/register model, and browser Driver Station.
+  modular device drivers, hub register routing, and browser Driver Station.
 - `sdk/`: editable upstream FTC sources, desktop platform shims, reusable Java
   runtime. Its Android build remains independent.
 - `scripts/build_sdk.py`: compiles and stages the wheel's JVM binaries.
 - [PROTOCOL.md](PROTOCOL.md): WebSocket messages and connection ownership.
 
 The browser controls Java directly on port 1115. Java connects to Python once on
-`/sim`; Python serves the page and read-only motor state. Actual SDK controllers,
+`/sim`; Python serves the page and streams physical device state over `/sim/drivers`. Actual SDK controllers,
 Lynx payload serializers/decoders, telemetry, gamepads, and iterative/linear
 lifecycle execute on Java. Disconnects disable modeled outputs; simulator
 transport loss requires restarting the SDK.
 
-The model supports motor enable, power/velocity, target positions and encoders,
-plus basic servo registers. Full power is 2800 ticks/second with instantaneous
-acceleration. Field physics, robot pose/localization, cameras, I2C sensor models,
-Android services, and physical FTC Driver Station connections are not implemented.
-Installing a simulation target does not make arbitrary Android/vendor libraries
-desktop compatible.
+Built-in drivers cover DC motors, servos, passive odometry pods, and goBILDA
+Pinpoint with two nested encoder inputs. Pinpoint supports the SDK's real I²C
+register reads/writes, configurable bulk reads, CRC, position, velocity, and yaw.
+Full motor power defaults to 2800 ticks/second with instantaneous acceleration.
+Servo position follows enabled PWM commands without load or travel-time modeling.
+
+Sensors consume explicit body motion in mm/s and rad/s, supplied through the
+simulator's sensor-motion panel or `Robot.set_motion()`. There is no chassis model
+yet, so motor power does not generate robot motion. The planar IMU is ideal, with
+zero pitch/roll and no noise. Cameras, other I²C sensors, Android services, and
+physical FTC Driver Station connections remain unsupported.

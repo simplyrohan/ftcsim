@@ -1,7 +1,6 @@
-include PROTOCOL.md setup.py
-recursive-include docs *.md
+include PROTOCOL.md DRIVERS.md setup.py
 recursive-include scripts *.py
-recursive-include src/ftcsim *.py *.txt *.html
+recursive-include src/ftcsim *.py *.txt *.html *.js
 graft sdk
 prune sdk/.gradle
 prune src/ftcsim/sdk

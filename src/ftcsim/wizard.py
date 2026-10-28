@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install a desktop TeamCodeSim target into an FTC project. with the packaged SDK.
+"""Install a desktop TeamCodeSim target into an FTC project with the packaged SDK.
 
 Run from the FTC project root:
     ftcsim --wizard
@@ -10,7 +10,6 @@ links the bundled compiled SDK. --copy-sdk copies its binaries into the project.
 """
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -24,10 +23,10 @@ import tempfile
 import uuid
 import xml.etree.ElementTree as ET
 from rich.console import Console
-console = Console(highlight=False, markup=False)
-print = console.print
+from . import __version__
 
-VERSION = '0.1.0'
+console = Console(highlight=False, markup=False)
+
 STATE = '.ftcsim/install.json'
 SKIP_DIRS = {'.git', '.gradle', '.idea', '.venv', '__pycache__', 'build', 'out', '.kotlin'}
 
@@ -143,48 +142,6 @@ def discover_opmodes(root: Path) -> list[str]:
     return sorted(result)
 
 
-def robot_xml(path: Path) -> dict:
-    try:
-        tree = ET.parse(path)
-    except (OSError, ET.ParseError) as error:
-        raise WizardError(f'Cannot read robot XML: {error}') from error
-    devices, unsupported = [], []
-    names, ports = set(), set()
-    def visit(element, module=None):
-        if element.get('enabled', 'true').lower() == 'false':
-            return
-        tag = element.tag.rsplit('}', 1)[-1]
-        if tag == 'LynxModule':
-            try:
-                module = int(element.get('port', ''))
-            except ValueError as error:
-                raise WizardError('LynxModule needs an integer address in its port attribute') from error
-            if not 1 <= module <= 254:
-                raise WizardError('Lynx module address must be 1..254')
-        elif module is not None and element.get('name') and element.get('port') is not None:
-            lowered = tag.lower()
-            kind = ('servo' if lowered in ('servo', 'servofullrange') else
-                    'motor' if 'motor' in lowered or lowered.startswith(('gobilda5202', 'neverest', 'tetrix')) else None)
-            try:
-                port = int(element.get('port'))
-            except ValueError as error:
-                raise WizardError(f'Invalid port for {element.get("name")}') from error
-            item = {'name': element.get('name').strip(), 'type': kind or tag, 'module': module, 'port': port}
-            if kind:
-                key = (module, kind, port)
-                if not 0 <= port < (4 if kind == 'motor' else 6):
-                    raise WizardError(f'Invalid {kind} port: {item}')
-                if not item['name'] or item['name'] in names or key in ports or re.fullmatch(r'hub\d+', item['name']):
-                    raise WizardError(f'Duplicate/reserved name or port: {item}')
-                names.add(item['name']); ports.add(key); devices.append(item)
-            else:
-                unsupported.append(item)
-        for child in element:
-            visit(child, module)
-    visit(tree.getroot())
-    return {'source': str(path.resolve()), 'devices': devices, 'unsupportedDevices': unsupported}
-
-
 def run_xml(name: str, task: str | None = None, module: str | None = None) -> bytes:
     root = ET.Element('component', name='ProjectRunConfigurationManager')
     config = ET.SubElement(root, 'configuration', default='false', name=name,
@@ -255,7 +212,7 @@ class Plan:
                     if digest(before) != previous and not self.force:
                         raise WizardError(f'Stale managed file was edited: {name}; use --force to back up and remove it.')
                     self.changes.append(Change(name, before, None, path.stat().st_mode & 0o777))
-        value = {'format': 1, 'wizard': VERSION, 'source_sdk': str(sdk), 'sdk_mode': mode, 'managed': self.managed}
+        value = {'format': 1, 'wizard': __version__, 'source_sdk': str(sdk), 'sdk_mode': mode, 'managed': self.managed}
         self.put(STATE, json.dumps(value, indent=2, sort_keys=True) + '\n')
 
     def apply(self) -> Path | None:
@@ -367,12 +324,6 @@ def make_plan(args) -> tuple[Plan, list[str]]:
     extra = safe_path(root, 'TeamCodeSim/extra-dependencies.gradle')
     if not extra.exists():
         plan.put('TeamCodeSim/extra-dependencies.gradle', EXTRA_DEPENDENCIES)
-    config = safe_path(root, 'TeamCodeSim/robot.json')
-    if args.robot_xml:
-        configuration = robot_xml(args.robot_xml.expanduser().resolve())
-        plan.put('TeamCodeSim/robot.json', json.dumps(configuration, indent=2) + '\n')
-    elif not config.exists():
-        plan.put('TeamCodeSim/robot.json', json.dumps({'devices': [], 'note': 'Configure ports in the browser DS before INIT, or rerun with --robot-xml.'}, indent=2) + '\n')
     project_name = re.search(r'rootProject\.name\s*=\s*["\']([^"\']+)', settings_text)
     module_name = (project_name[1] if project_name else root.name) + '.TeamCode'
     for filename, name, task in [('Simulator', 'FTC Simulator', ':TeamCodeSim:run'), ('Backend', 'FTC Simulator Backend', ':TeamCodeSim:startBackend')]:
@@ -387,61 +338,54 @@ def add_arguments(result):
     result.add_argument('--sdk', help='Override the packaged compiled SDK directory')
     result.add_argument('--copy-sdk', action='store_true', help='Copy compiled SDK into the project instead of linking the installation')
     result.add_argument('--opmode', action='append', help='Fully qualified class; repeat to register multiple (otherwise discover top-level OpModes)')
-    result.add_argument('--robot-xml', type=Path, help='FTC robot configuration XML to import supported motor/servo mappings')
     result.add_argument('--kotlin-version', help='Required for Kotlin projects without an existing root Kotlin plugin')
     result.add_argument('--dry-run', action='store_true', help='Show changes without writing anything')
     result.add_argument('--yes', '-y', action='store_true', help='Apply without the final interactive prompt')
     result.add_argument('--force', action='store_true', help='Back up and replace edited/unowned generated files; never edit robot sources')
-    return result
 
 
 def run(args):
     try:
         if not args.yes and not args.dry_run and sys.stdin.isatty():
-            print('FTC simulator setup. Robot source files will not be edited.')
-            if not args.robot_xml:
-                selected = input('Robot configuration XML (Enter to configure ports in browser later): ').strip()
-                if selected:
-                    args.robot_xml = Path(selected)
+            console.print('FTC simulator setup. Robot source files will not be edited.')
         plan, opmodes = make_plan(args)
-        print('Project:', plan.root)
-        print('OpModes:', ', '.join(opmodes) or 'none discovered; SDK built-in demos only')
-        print('SDK:', 'copy into project' if args.copy_sdk else 'link packaged SDK')
-        print(f'Planned changes: {len(plan.changes)}')
+        console.print('Project:', plan.root)
+        console.print('OpModes:', ', '.join(opmodes) or 'none discovered; SDK built-in demos only')
+        console.print('SDK:', 'copy into project' if args.copy_sdk else 'link packaged SDK')
+        console.print(f'Planned changes: {len(plan.changes)}')
         for change in plan.changes[:25]:
-            print('  ' + ('delete ' if change.after is None else 'create ' if change.before is None else 'update ') + change.name)
+            console.print('  ' + ('delete ' if change.after is None else 'create ' if change.before is None else 'update ') + change.name)
         if len(plan.changes) > 25:
-            print(f'  ... {len(plan.changes) - 25} additional SDK/installer files')
+            console.print(f'  ... {len(plan.changes) - 25} additional SDK/installer files')
         if not plan.changes:
-            print('Already configured; no files changed.')
+            console.print('Already configured; no files changed.')
             return 0
         if args.dry_run:
-            print('Dry run: nothing written.')
+            console.print('Dry run: nothing written.')
             return 0
         if not args.yes:
             if not sys.stdin.isatty():
                 raise WizardError('Noninteractive invocation: use --yes to apply or --dry-run to inspect.')
             if input('Apply these changes? [y/N] ').strip().lower() not in ('y', 'yes'):
-                print('Cancelled; no files changed.')
+                console.print('Cancelled; no files changed.')
                 return 0
         backup = plan.apply()
-        print('Configured TeamCodeSim. Backups:', backup)
-        print('Sync Gradle in Android Studio. Start FTC Simulator Backend, then FTC Simulator.')
-        print('Or use ./gradlew :TeamCodeSim:startBackend and ./gradlew runSimulator in separate terminals.')
-        print('Review TeamCodeSim/robot.json before INIT. Unsupported hardware/services still require simulator support.')
+        console.print('Configured TeamCodeSim. Backups:', backup)
+        console.print('Sync Gradle in Android Studio. Start FTC Simulator Backend, then FTC Simulator.')
+        console.print('Or use ./gradlew :TeamCodeSim:startBackend and ./gradlew runSimulator in separate terminals.')
+        console.print('Open the Driver Station Hardware map page to configure devices before INIT.')
         return 0
     except (WizardError, OSError, ValueError) as error:
         console.print(f'Setup failed: {error}', style='red', markup=False)
         return 1
 
-
-
-SETTINGS_KTS = (Path(__file__).parent / 'templates/settings_kts.txt').read_text()
-SETTINGS_GROOVY = (Path(__file__).parent / 'templates/settings_groovy.txt').read_text()
-TASK_KTS = (Path(__file__).parent / 'templates/task_kts.txt').read_text()
-TASK_GROOVY = (Path(__file__).parent / 'templates/task_groovy.txt').read_text()
-KOTLIN_SOURCES = (Path(__file__).parent / 'templates/kotlin_sources.txt').read_text()
-MODULE = (Path(__file__).parent / 'templates/module.txt').read_text()
-AAR_TRANSFORM = (Path(__file__).parent / 'templates/aar_transform.txt').read_text()
-EXTRA_DEPENDENCIES = (Path(__file__).parent / 'templates/extra_dependencies.txt').read_text()
-PROJECT_README = (Path(__file__).parent / 'templates/project_readme.txt').read_text()
+TEMPLATES = Path(__file__).with_name('templates')
+SETTINGS_KTS = (TEMPLATES / 'settings_kts.txt').read_text()
+SETTINGS_GROOVY = (TEMPLATES / 'settings_groovy.txt').read_text()
+TASK_KTS = (TEMPLATES / 'task_kts.txt').read_text()
+TASK_GROOVY = (TEMPLATES / 'task_groovy.txt').read_text()
+KOTLIN_SOURCES = (TEMPLATES / 'kotlin_sources.txt').read_text()
+MODULE = (TEMPLATES / 'module.txt').read_text()
+AAR_TRANSFORM = (TEMPLATES / 'aar_transform.txt').read_text()
+EXTRA_DEPENDENCIES = (TEMPLATES / 'extra_dependencies.txt').read_text()
+PROJECT_README = (TEMPLATES / 'project_readme.txt').read_text()

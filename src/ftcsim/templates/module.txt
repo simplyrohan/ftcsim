@@ -45,11 +45,9 @@ tasks.named('run', JavaExec) {
     workingDir rootDir
     classpath = orderedClasspath()
     doFirst {
-        def config = providers.gradleProperty('simConfig').orNull
         def modes = providers.gradleProperty('simOpmodes').orElse(__OPMODES__).get()
         def values = ['--sim', providers.gradleProperty('simEndpoint').orElse('ws://localhost:9015/sim').get(),
-                      '--ds-port', providers.gradleProperty('simDsPort').orElse('1115').get(),
-                      '--config', (config ? rootProject.file(config) : file('robot.json')).absolutePath]
+                      '--ds-port', providers.gradleProperty('simDsPort').orElse('1115').get()]
         modes.split(',').collect { it.trim() }.findAll { it }.each { values += ['--opmode', it] }
         setArgs(values)
     }

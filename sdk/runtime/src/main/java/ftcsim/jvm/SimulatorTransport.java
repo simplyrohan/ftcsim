@@ -58,25 +58,48 @@ public final class SimulatorTransport implements LynxCommandTransport, AutoClose
         if (!(message instanceof LynxRespondable)) throw new IllegalArgumentException("Expected a respondable Lynx command");
         LynxRespondable<?> command = (LynxRespondable<?>) message;
         if (!connected) throw new IllegalStateException("Simulator WebSocket is disconnected");
-        long id = sequence.incrementAndGet();
-        CompletableFuture<JsonObject> waiting = new CompletableFuture<>();
-        pending.put(id, waiting);
         try {
             JsonObject request = new JsonObject();
-            request.addProperty("version", 1); request.addProperty("type", "lynx"); request.addProperty("id", id);
+            request.addProperty("type", "lynx");
             request.addProperty("module", command.getModuleAddress()); request.addProperty("command", command.getClass().getName());
             request.addProperty("payload", hex(command.toPayloadByteArray())); request.addProperty("response", command.getExpectedResponseClassName());
-            // JDK WebSocket permits one outstanding text send. Responses remain correlated by id.
-            synchronized (socket) { socket.sendText(request.toString(), true).get(3, TimeUnit.SECONDS); }
-            JsonObject reply = waiting.get(3, TimeUnit.SECONDS);
+            JsonObject reply = exchange(request);
             String status = reply.get("status").getAsString();
             if (status.equals("nack")) command.onNackReceived(new LynxNack(command.getModule(), reply.get("reason").getAsInt()));
             else if (status.equals("response") && command.isResponseExpected()) command.onRemotePayloadReceived(unhex(reply.get("payload").getAsString()));
             else if (status.equals("ack") && !command.isResponseExpected()) command.onAckReceived(new LynxAck(command.getModule()));
             else throw new IllegalStateException("Unexpected Lynx reply: " + reply);
-        } catch (ExecutionException | TimeoutException | RuntimeException failure) {
+        } catch (RuntimeException failure) {
             close();
             throw new IllegalStateException("Lynx WebSocket exchange failed for " + command.getClass().getSimpleName(), failure);
+        }
+    }
+    /** Synchronize the physical topology before SDK controllers touch hardware. */
+    public void configure(JsonArray devices) throws InterruptedException {
+        configure(devices, false);
+    }
+    public void validateConfiguration(JsonArray devices) throws InterruptedException {
+        configure(devices, true);
+    }
+    private void configure(JsonArray devices, boolean validateOnly) throws InterruptedException {
+        JsonObject request = new JsonObject(); request.addProperty("type", "configure");
+        request.add("devices", devices); request.addProperty("validateOnly", validateOnly);
+        JsonObject reply = exchange(request);
+        if (!"ack".equals(reply.get("status").getAsString()))
+            throw new IllegalArgumentException("Simulator configuration rejected: " + reply);
+    }
+    private JsonObject exchange(JsonObject request) throws InterruptedException {
+        if (!connected) throw new IllegalStateException("Simulator WebSocket is disconnected");
+        long id = sequence.incrementAndGet();
+        CompletableFuture<JsonObject> waiting = new CompletableFuture<>();
+        pending.put(id, waiting);
+        try {
+            request.addProperty("version", 1); request.addProperty("id", id);
+            synchronized (socket) { socket.sendText(request.toString(), true).get(3, TimeUnit.SECONDS); }
+            return waiting.get(3, TimeUnit.SECONDS);
+        } catch (ExecutionException | TimeoutException | RuntimeException failure) {
+            close();
+            throw new IllegalStateException("Simulator exchange failed", failure);
         } finally { pending.remove(id); }
     }
     public boolean isConnected() { return connected; }
