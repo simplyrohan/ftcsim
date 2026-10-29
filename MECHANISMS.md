@@ -13,7 +13,8 @@ code; only the actual hardware map is required by the DS's INIT control.
 1. Configure and apply the four motors on **Settings → Hardware map**. Optionally add a
    Pinpoint with its existing X and Y odometry-pod children.
 2. Open **Settings → Mechanisms**, add a **Mecanum drivetrain**, and select
-   each wheel's motor. A motor may be connected to only one mechanism input.
+   each wheel's motor. Physical mechanism inputs are exclusive; read-only custom
+   mechanisms may also observe those motors.
 3. Set each motor's maximum RPM, ticks per output-shaft revolution, and physical
    direction on **Settings → Hardware map**, using a goBILDA preset or custom values.
    The drivetrain uses each motor's own resolution, including when motors differ.
@@ -28,15 +29,18 @@ code; only the actual hardware map is required by the DS's INIT control.
 5. Optionally select a Pinpoint. Both child pods must be configured with the
    correct X/Y axes, physical mounting offsets, resolutions, and wiring directions.
    The hardware map alone does not connect it to a drivetrain. The sensor binding
-   shows the two child encoder names; if no sensor is selected, **Link pinpoint**
-   selects the sole available Pinpoint before you apply the mechanism.
-6. **Apply to simulator** while stopped. The DS saves drafts in localStorage,
+   shows the two child encoder names. Choose the Pinpoint in Connections before
+   applying the mechanism.
+6. **Update simulation** while stopped. The DS saves drafts in localStorage,
    separately from the hardware map, scoped to its simulator origin and SDK
-   address. Saved definitions restore after the hardware map is ready. No
-   mechanism definitions are included in portable hardware-map files.
+   address. Saved definitions restore after the hardware map is ready. **Save robot** exports hardware, mechanisms, and their GLB models in one
+   `.fs` ZIP archive. **Load robot** validates both drafts
+   together without applying them. Apply hardware first, then mechanisms.
 
-A live drivetrain widget on **Overview** displays physical pose, body
-velocity, all four wheel speeds, and an orientation diagram. This physical pose
+A full-frame 3D viewer on **Overview** displays the drivebase at its physical
+pose, with measured wheel speeds animating the built-in mecanum wheels.
+A GLB can replace the built-in visual without changing drivetrain physics. An overlay shows
+pose and expandable wheel/encoder feedback. This physical pose
 is independent of the Pinpoint's estimated pose. Resetting or miscalibrating the
 Pinpoint never teleports the simulated drivebase.
 With a Pinpoint linked, the widget also shows each child pod's live counter,
@@ -134,7 +138,9 @@ origin without resetting the referenced drivers or their sensor estimates.
 3. Register the class in `mechanisms/registry.py`. The generic DS editor builds
    connection selectors and setting fields from the catalog.
 4. Add a Svelte component and register it in
-   `driver-station/src/lib/model/mechanism-widgets.ts`. No SDK change is needed.
+   `driver-station/src/lib/model/mechanism-widgets.ts` for state readouts. Add a
+   visual to `mechanismVisuals` in `driver-station/src/lib/scene/viewport.ts` for
+   the 3D scene. No SDK change is needed.
 
 `GET /sim/mechanism-types` advertises metadata. `POST /sim/mechanisms` accepts
 `{"mechanisms": [...]}` and atomically applies valid bindings, returning a physical
@@ -143,3 +149,110 @@ simulator origin. `/sim/drivers` and `/sim/state` include `mechanisms`,
 `mechanism_configuration`, and `mechanism_error` alongside existing driver state.
 The page prevents applying while an OpMode is active; Python does not learn or
 control the SDK lifecycle through this mechanism API.
+
+## Custom mechanisms and uploaded models
+
+In **Settings → Mechanisms**, select a mechanism using the row of names. Both
+mecanum and custom mechanisms have the same **Model & origin** editor and live
+3D preview. Mecanum adds **Connections** and **Drive geometry** settings; custom
+mechanisms add actuator **Connections** and **Motion** mapping.
+
+A custom mechanism reads one motor or servo, or stays static when unbound. It
+never writes driver state, drives odometry, or exposes anything to the SDK. Its
+read-only binding can share a motor or servo with other mechanisms. Motor input
+is output-shaft revolutions (`encoder position / ticks per revolution × physical
+direction`); servo input is position from 0 to 1, holding its last position when
+PWM is disabled. The mapping is:
+
+```
+displacement = (input position - input at starting pose) * travel * direction
+```
+
+Rotation travel is degrees per motor revolution or per full servo range.
+Translation travel is millimeters for that same input range. Choose the local X,
+Y, or Z axis and optionally reverse its direction. **Test input manually** drives
+only the draft preview; it sends no hardware commands.
+
+Upload a self-contained binary glTF 2.0 (`.glb`) file of at most 20 MiB. Embed
+textures and buffers. Meshopt compression is supported; export without Draco or
+KTX2 compression. GLB materials, node transforms, and model origin are preserved;
+the viewer does not automatically center the geometry. Authored animation clips
+are not played: the mechanism moves the model as one assembly.
+
+Model scale converts the GLB's coordinates to meters; presets cover meters,
+centimeters, and millimeters. Starting position uses millimeters, with robot
+axes **X forward, Y left, Z up**. Starting orientation uses roll X, pitch Y,
+and yaw Z in degrees (yaw → pitch → roll composition). Motion is applied after
+that starting pose, around or along its local axis; scale affects geometry only.
+
+**Attach to origin** can reference any other mechanism, or a fixed world origin.
+New custom mechanisms attach to the first drivetrain when available. A chain
+such as drivetrain → turret → arm inherits every ancestor's placement and motion.
+A parent's origin is its pivot after its starting pose and actuator movement;
+GLB scale does not scale child offsets. Circular origin references are rejected
+by validation and unavailable in the parent selector. Renaming a mechanism also
+updates its child origin references. If a parent is removed, reattach its children
+before exporting or applying the configuration.
+
+GLB bytes are stored in browser IndexedDB; references and visual settings remain
+in the mechanism draft in localStorage. **Save robot** produces an `.fs` file, which is a standard ZIP archive:
+
+```
+ftcsim-robot.fs
+├── robot.json
+└── models/
+    ├── model-1.glb
+    └── model-2.glb
+```
+
+`robot.json` uses format `ftcsim.robot-configuration`, version 2, and stores the
+hardware, mechanism settings, and origin hierarchy. Its `assets` map connects
+model IDs to relative paths such as `models/model-1.glb`; GLBs are ordinary binary
+files, without base64 encoding. Shared model IDs use one file. Original upload
+names remain in each mechanism's visual metadata. An archive without uploaded
+models contains only `robot.json`.
+
+The complete archive and its expanded contents are limited to 64 MiB; `robot.json`
+is limited to 1 MiB and each GLB to 20 MiB. **Load robot** accepts `.fs` or `.zip`,
+checks ZIP entry sizes and paths before extraction, then validates both drafts,
+their origin graph, and every referenced model before replacing either draft.
+Missing assets and malformed archives leave the existing robot configuration
+intact. Version 1 JSON files with embedded GLBs remain loadable for migration.
+A missing or unreadable asset blocks export rather than producing an
+incomplete file. Physics options go only to the Python simulator; model assets,
+placement, and the origin graph stay in the DS.
+
+Visual classes implement `MechanismVisual` in `driver-station/src/lib/scene`.
+The viewport composes scene transforms at each mechanism's exposed `origin`,
+detaches child mechanisms before replacing a parent model, and disposes model
+geometry, materials, textures, and late-loading assets when removed.
+
+## Updating simulation and performance diagnostics
+
+**Update simulation** sends driver bindings and motion/geometry options to
+`POST /sim/mechanisms`. Python validates them and recreates mechanism instances;
+this resets drivetrain pose, while existing hardware drivers and encoder counts
+remain intact. Model files, model placement, and origin attachments stay in the
+browser and update visually without this action. The button is disabled when the
+physics configuration is already current. The request has a seven-second timeout,
+not a seven-second delay; its completion message reports elapsed time.
+
+**Settings → Performance** shows SDK and simulator round-trip latency, a smoothed
+average, probe timeouts, UI scheduling delay, rendering FPS, CPU render time,
+draw calls, triangle counts, geometry/texture counts, and model builds. It also
+separates the last update's total request time from Python's configuration time
+using the `Server-Timing` response header. CPU render timing excludes GPU work.
+
+SDK latency piggybacks an ID on one existing gamepad frame every two seconds,
+then measures its existing ACK, including SDK command-queue time. Observer tabs
+use the SDK's existing HTTP service endpoint. No SDK changes are required.
+Simulator latency uses a small `ping`/`pong` exchange on `/sim/drivers`, without
+changing actuator state or producing an extra robot snapshot. Probes pause when
+the page is hidden and reset on disconnect.
+
+Covered, inactive-tab, and offscreen viewports stop rendering. The mechanism
+preview is capped at 30 FPS at a 1× pixel ratio. Placement, origin, scale, and
+motion edits update transforms on the existing model; only a different GLB or
+procedural geometry dimensions rebuilds it. Hidden Overview scenes also defer
+model synchronization until visible again. Model-build counters help identify
+unexpected asset churn when editing large models.

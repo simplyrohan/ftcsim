@@ -34,7 +34,9 @@ For different ports, copy `.env.example` to `.env.local` and change
 `FTCSIM_BACKEND` / `FTCSIM_SDK`. Restart Vite after changing them. In development,
 the SDK address in Connection settings must match `FTCSIM_SDK` to use that proxy.
 Browser drafts are scoped to their origin and SDK address, so Vite and the
-Python-served app have separate browser storage. Hardware-map files are portable.
+Python-served app have separate browser storage. Robot configuration files include both hardware and mechanisms and are portable.
+The editors and apply actions remain separate. Loading validates the entire file,
+including mechanism driver references, before changing either draft.
 
 The bottom of the sidebar shows separate simulator-server and SDK connection
 indicators. Click either to open Connection settings. The simulator indicator
@@ -56,6 +58,30 @@ npm run check       # TypeScript and Svelte diagnostics
 npm run build       # standalone static output in build/
 npm run preview     # inspect the static build; use Python for live SDK access
 ```
+
+## 3D Overview
+
+Overview fills the workspace below the breadcrumb bar with a transparent Three.js
+scene. OpMode controls, telemetry, the selected gamepad, and drivebase readouts
+float over the scene. Smaller screens expose Telemetry and Gamepad dock buttons.
+The other sidebar pages and the settings dialog retain their existing workflows.
+
+Drag to orbit, right-drag to pan, and scroll or pinch to zoom. Camera controls
+switch between perspective/top views, follow the selected robot, and recenter.
+The scene uses the mechanism's physical pose rather than the Pinpoint estimator.
+Wheel animation uses measured wheel speed and the configured wheel diameter;
+wheelbase and track width determine the model's dimensions. The generic chassis
+is generated locally without downloading a model or environment textures.
+
+`src/lib/scene/viewport.ts` owns the renderer, camera, controls, lighting, resize
+observer, and render loop. Register a mechanism visual in `mechanismVisuals`;
+`mecanum.ts` implements the current robot. FTC forward/left mm coordinates map
+to Three.js +X/-Z meters, with +Y up. Three.js loads only for Overview or a mechanism preview. Leaving
+the page disposes GPU resources while the root station retains its sockets;
+hidden documents pause rendering. No physics or input logic runs in the viewer.
+
+See the [Three.js renderer](https://threejs.org/docs/pages/WebGLRenderer) and
+[OrbitControls](https://threejs.org/docs/pages/OrbitControls) documentation.
 
 ## Python distribution
 
@@ -79,7 +105,11 @@ output and node_modules. Wheels contain the static bundle, without build tools.
   ownership, heartbeat, pending requests, physical-state reconnects, and cleanup.
 - `hardware.svelte.ts` / `mechanisms.svelte.ts`: metadata-driven configuration,
   validation, browser drafts, import/export, confirmation, and idle restoration.
-- `configuration.ts`: shared topology and option validation.
+- `configuration.ts`: shared topology, origin graph, and option validation.
+- `robot-configuration.svelte.ts`: portable `.fs` ZIP archives containing `robot.json` and GLB files.
+- `robot-archive.ts`: archive creation, bounded extraction, and path validation.
+- `model-assets.ts`: IndexedDB storage and binary glTF validation.
+- `src/lib/scene/models.ts`: uploaded models and nested mechanism transforms.
 - `widgets.ts`: driver presenters. Register new driver kinds here; composite
   device cards recurse through existing children.
 - `mechanism-widgets.ts`: mechanism kind → Svelte component registry. Mechanisms
@@ -93,3 +123,5 @@ Bits UI focus trapping, Escape dismissal, and keyboard-accessible tabs. Runtime 
 dialog, and STOP neutralize virtual/keyboard controls. The input enable switch
 retains its value when settings open and close.
 Reduced-motion preferences disable cosmetic transitions.
+
+Performance diagnostics live in **Settings → Performance**. See [MECHANISMS.md](../MECHANISMS.md#updating-simulation-and-performance-diagnostics) for RTT measurement details and rendering behavior.

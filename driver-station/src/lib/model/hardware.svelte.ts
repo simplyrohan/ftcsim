@@ -25,7 +25,7 @@ export class HardwareConfiguration {
   get synchronized() { return this.sdkSynchronized && this.station.physical?.connected === true && topology(this.devices) === topology(this.station.physical.devices); }
   get ready() { return this.loaded && this.synchronized && !this.busy && !this.importing && !this.error; }
   get count() { return flatten(this.devices).length; }
-  get canApply() { return this.loaded && this.station.canConfigure && !this.busy && !this.importing && !this.error; }
+  get canApply() { return !this.station.robotConfiguration.importing && this.loaded && this.station.canConfigure && !this.busy && !this.importing && !this.error; }
   load(endpoint:string) {
     this.epoch++; this.key = `ftcsim.hardware.v1:${encodeURIComponent(endpoint)}`;
     this.devices = []; this.remote = []; this.configured = false; this.hasDraft = false; this.hasSaved = false; this.notes = ''; this.busy = false; this.importing = false; this.message = ''; this.storageError = ''; this.restorePending = true;

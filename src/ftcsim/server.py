@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Central HTTP/WebSocket server. Run independently of the desktop SDK."""
 import asyncio
+from time import perf_counter
 from contextlib import suppress
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from aiohttp import web, WSMsgType
 from .physics.model import Robot
 from .drivers import DRIVERS
@@ -19,21 +20,35 @@ class SdkLink:
 
 
 PEER = web.AppKey('sdk_peer', SdkLink)
-DRIVER_CLIENTS = web.AppKey('driver_clients', set)
+
+
+@dataclass
+class Connections:
+    stopping: bool = False
+    sockets: dict = field(default_factory=dict)
+
+
+CONNECTIONS = web.AppKey('connections', Connections)
 
 
 async def simulator(request):
+    connections = request.app[CONNECTIONS]
+    if connections.stopping:
+        raise web.HTTPServiceUnavailable(text='Simulator is stopping')
     if request.app[PEER].socket is not None:
         raise web.HTTPConflict(text='One SDK connection is already active')
     ws = web.WebSocketResponse(heartbeat=1, max_msg_size=1024 * 1024)
     # Claim ownership before yielding so two simultaneous upgrades cannot race.
     request.app[PEER].socket = ws
+    connections.sockets[ws] = request.transport
     robot = request.app[ROBOT]
     try:
         await ws.prepare(request)
         robot.failsafe()
         robot.connected = True
         async for message in ws:
+            if connections.stopping:
+                break
             if message.type == WSMsgType.TEXT:
                 try:
                     data = message.json()
@@ -49,6 +64,7 @@ async def simulator(request):
         robot.failsafe()
         robot.connected = False
         request.app[PEER].socket = None
+        connections.sockets.pop(ws, None)
     return ws
 
 
@@ -58,26 +74,37 @@ async def state(request):
 
 async def drivers(request):
     """Live physical state, separate from the SDK-owned control connection."""
+    connections = request.app[CONNECTIONS]
+    if connections.stopping:
+        raise web.HTTPServiceUnavailable(text='Simulator is stopping')
     origin = request.headers.get('Origin')
     if origin and origin != f'{request.scheme}://{request.host}':
         raise web.HTTPForbidden(text='Open the Driver Station from the simulator origin')
     ws = web.WebSocketResponse(heartbeat=5, max_msg_size=65536)
-    await ws.prepare(request)
-    await ws.send_json(dict(type='drivers', drivers=DRIVERS.catalog()))
     robot = request.app[ROBOT]
-    request.app[DRIVER_CLIENTS].add(ws)
+    connections.sockets[ws] = request.transport
 
     async def publish():
-        while not ws.closed:
+        while not ws.closed and not connections.stopping:
             await ws.send_json(robot.snapshot())
             await asyncio.sleep(.1)
 
-    task = asyncio.create_task(publish())
+    task = None
     try:
+        await ws.prepare(request)
+        await ws.send_json(dict(type='drivers', drivers=DRIVERS.catalog()))
+        task = asyncio.create_task(publish())
         async for message in ws:
+            if connections.stopping:
+                break
             if message.type == WSMsgType.TEXT:
                 try:
                     data = message.json()
+                    if isinstance(data, dict) and data.get('type') == 'ping':
+                        if set(data) != {'type', 'id'} or type(data['id']) is not int:
+                            raise ValueError('Invalid ping')
+                        await ws.send_json(dict(type='pong', id=data['id']))
+                        continue
                     if not isinstance(data, dict) or data.get('type') != 'motion':
                         raise ValueError('Expected motion input')
                     if data.keys() - {'type', 'vx', 'vy', 'angular_velocity'}:
@@ -91,10 +118,16 @@ async def drivers(request):
             elif message.type == WSMsgType.ERROR:
                 break
     finally:
-        request.app[DRIVER_CLIENTS].discard(ws)
-        task.cancel()
-        with suppress(asyncio.CancelledError, ConnectionError):
-            await task
+        connections.sockets.pop(ws, None)
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, ConnectionError):
+                pass
+            except RuntimeError:
+                if not connections.stopping and not ws.closed:
+                    raise
     return ws
 
 
@@ -107,6 +140,7 @@ async def mechanism_types(request):
 
 
 async def configure_mechanisms(request):
+    started = perf_counter()
     origin = request.headers.get('Origin')
     if origin and origin != f'{request.scheme}://{request.host}':
         raise web.HTTPForbidden(text='Open the Driver Station from the simulator origin')
@@ -117,7 +151,8 @@ async def configure_mechanisms(request):
         request.app[ROBOT].configure_mechanisms(data['mechanisms'])
     except (ValueError, TypeError) as error:
         return web.json_response(dict(message=str(error)), status=400)
-    return web.json_response(request.app[ROBOT].snapshot(), headers={'Cache-Control': 'no-store'})
+    return web.json_response(request.app[ROBOT].snapshot(), headers={'Cache-Control': 'no-store',
+                             'Server-Timing': f'mechanisms;dur={(perf_counter() - started) * 1000:.3f}'})
 
 
 async def ds(request):
@@ -145,25 +180,39 @@ async def home(request):
     raise web.HTTPFound('/ds')
 
 
+async def shutdown(app):
+    """Close upgrades before aiohttp waits for their request handlers to finish."""
+    connections = app[CONNECTIONS]
+    connections.stopping = True
+    app[ROBOT].failsafe()
+
+    async def close(ws, transport):
+        try:
+            # One bounded, concurrent grace period, even for peers that stop reading.
+            await asyncio.wait_for(ws.close(code=1001, message=b'Simulator stopping', drain=False), timeout=.5)
+        except (asyncio.TimeoutError, ConnectionError, RuntimeError):
+            if transport is not None:
+                transport.abort()
+
+    await asyncio.gather(*(close(ws, transport) for ws, transport in tuple(connections.sockets.items())))
+
+
 async def lifecycle(app):
     async def tick():
         loop = asyncio.get_running_loop()
         previous = loop.time()
-        while True:
+        while not app[CONNECTIONS].stopping:
             await asyncio.sleep(.02)
             now = loop.time()
-            app[ROBOT].advance(min(now - previous, .1))
+            if not app[CONNECTIONS].stopping:
+                app[ROBOT].advance(min(now - previous, .1))
             previous = now
     task = asyncio.create_task(tick())
     yield
     task.cancel()
     with suppress(asyncio.CancelledError):
         await task
-    if app[PEER].socket is not None:
-        await app[PEER].socket.close(code=1001, message=b'Simulator stopping')
     app[ROBOT].failsafe()
-    for ws in list(app[DRIVER_CLIENTS]):
-        await ws.close(code=1001, message=b'Simulator stopping')
 
 
 def create_app(*, dev=False):
@@ -171,7 +220,7 @@ def create_app(*, dev=False):
     app = web.Application(client_max_size=1024 * 1024)
     app[ROBOT] = Robot()
     app[PEER] = SdkLink()
-    app[DRIVER_CLIENTS] = set()
+    app[CONNECTIONS] = Connections()
     app.router.add_get('/sim', simulator)
     app.router.add_get('/sim/state', state)
     app.router.add_get('/sim/drivers', drivers)
@@ -183,6 +232,7 @@ def create_app(*, dev=False):
         app.router.add_get('/ds', ds)
         app.router.add_get('/ds/{path:.*}', ds)
     app.cleanup_ctx.append(lifecycle)
+    app.on_shutdown.append(shutdown)
     return app
 
 

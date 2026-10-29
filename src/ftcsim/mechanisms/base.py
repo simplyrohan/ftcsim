@@ -28,6 +28,7 @@ class Pose2D:
 
 class Mechanism(ABC):
     kind = ''
+    exclusive = True
     driver_slots = {}
     option_metadata = {}
 
@@ -38,7 +39,7 @@ class Mechanism(ABC):
 
     @property
     def consumed_drivers(self):
-        return tuple(self.drivers.values())
+        return tuple(self.drivers.values()) if self.exclusive else ()
 
     def sensor_inputs(self):
         """Root sensor → body motion. Robot advances each driver tree exactly once."""

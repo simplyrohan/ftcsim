@@ -26,7 +26,7 @@ class MecanumDrivetrain(Mechanism):
         'wheelbase_mm': dict(label='Front-to-rear wheel spacing (mm)', min=0.01),
         'track_width_mm': dict(label='Left-to-right wheel spacing (mm)', min=0.01),
         'lateral_multiplier': dict(label='Lateral motion multiplier', min=0.01),
-        **{f'{wheel}_direction': dict(label=f'{wheel.replace("_", " ").title()} mounting direction', choices=[1, -1])
+        **{f'{wheel}_direction': dict(label=f'{wheel.replace("_", " ").title()} mounting direction', choices=[dict(value=1, label='Forward'), dict(value=-1, label='Reversed')])
            for wheel in WHEELS},
     }
 

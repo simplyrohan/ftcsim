@@ -1,0 +1,98 @@
+/* Overview is a viewport, with controls floating above a transparent WebGL layer. */
+.viewer-workspace { height:100dvh; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+.viewer-workspace>.topbar { flex-shrink:0; }
+.overview-scene { flex:1; min-height:0; position:relative; overflow:hidden; isolation:isolate; }
+.robot-viewport { position:absolute; inset:0; }
+.robot-viewport canvas { display:block; width:100%; height:100%; outline:none; touch-action:none; }
+.scene-overlay { position:absolute; z-index:2; }
+.overview-scene .panel { background:rgb(11 11 12 / .82); backdrop-filter:blur(12px); border-color:rgb(79 79 87 / .42); box-shadow:0 8px 32px #00000010; }
+.scene-controller { top:22px; left:22px; width:min(430px,calc(100% - 366px)); }
+.scene-controller .controller-panel { grid-template-columns:minmax(0,1fr) auto; column-gap:14px; row-gap:16px; padding:16px 17px 0; }
+.scene-controller .opmode-select { font-size:14px; }
+.scene-controller .lifecycle-state { flex-direction:row; gap:12px; }
+.scene-controller .runtime { min-width:0; font-size:12px; gap:5px; }
+.scene-controller .runtime svg { display:none; }
+.scene-controller .lifecycle-controls { grid-column:1/-1; gap:7px; }
+.scene-controller .lifecycle-controls button { flex:1; min-width:0; }
+.scene-controller .controller-caption { margin-top:0; gap:12px; font-size:9px; }
+.scene-controller .controller-caption>span { overflow-wrap:anywhere; max-height:44px; overflow:auto; }
+.scene-controller .controller-caption>button { font-size:9px; }
+.scene-telemetry { top:22px; right:22px; width:300px; }
+.scene-telemetry .panel-heading { padding:9px 14px; min-height:42px; }
+.scene-telemetry .telemetry-panel.compact .telemetry-body { padding:12px 14px; min-height:100px; max-height:clamp(100px,24vh,230px); overflow:auto; }
+.scene-telemetry .telemetry-line { font-size:10px; }
+.scene-telemetry .empty-telemetry { font-size:9px; }
+.scene-telemetry .empty-telemetry small { font-size:9px; }
+.scene-gamepad { right:22px; bottom:22px; width:300px; }
+.scene-gamepad .panel-heading { min-height:42px; padding:9px 14px; }
+.scene-gamepad .compact .stick-pair { gap:54px; padding:4px 10px 23px; }
+.scene-gamepad .compact .stick-display { width:58px; height:58px; }
+.scene-gamepad .gamepad-mini-buttons { margin-bottom:13px; }
+.scene-gamepad .gamepad-source { margin-inline:14px; }
+.scene-drivebase { left:22px; bottom:88px; width:min(360px,calc(100% - 366px)); max-height:calc(100% - 270px); overflow:auto; }
+.scene-drivebase .panel-heading { min-height:40px; padding:6px 13px; }
+.scene-drivebase .pose-readout { padding:13px 0; border-bottom:none; }
+.scene-drivebase .pose-readout>div { padding:0 13px; }
+.scene-drivebase .pose-readout span { font-size:9px; }
+.scene-drivebase .pose-readout strong { font-size:17px; }
+.scene-drivebase .pose-readout small { margin-left:4px; font-size:8px; }
+.scene-drivebase .wheel-readouts { grid-template-columns:1fr 1fr; padding:12px 13px; }
+.scene-drivebase .tracking-encoders>div { padding:10px 13px; }
+.scene-drivebase .tracking-encoders strong { font-size:12px; }
+.scene-feedback { border-top:1px solid var(--border); }
+.scene-feedback summary { cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 13px; font-size:9px; color:#777783; }
+.scene-feedback summary::-webkit-details-marker { display:none; }
+.scene-feedback summary svg { transition:transform 150ms ease; }
+.scene-feedback[open] summary svg { transform:rotate(180deg); }
+.scene-feedback summary:focus-visible { outline:1px solid var(--ring); outline-offset:-3px; }
+.scene-mechanism-select { background:transparent; border:none; color:#b9b9c5; font:inherit; font-size:11px; max-width:220px; }
+.scene-empty-state { padding:14px; font-size:10px; color:#81818b; line-height:1.8; }
+.scene-empty-state button { margin-top:12px; }
+.scene-camera-controls { position:absolute; z-index:1; bottom:22px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:3px; padding:5px; border:1px solid rgb(79 79 87 / .42); border-radius:7px; background:rgb(11 11 12 / .82); backdrop-filter:blur(12px); }
+.scene-camera-controls button[data-slot=button] { height:29px; border-color:transparent; font-size:10px; color:#757581; }
+.scene-camera-controls button[data-slot=button][aria-pressed=true] { border-color:#44444e; color:#d0d0db; }
+.scene-toolbar-divider { width:1px; height:15px; background:var(--border); margin-inline:3px; }
+.scene-camera-hint { position:absolute; bottom:72px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:9px; color:#565662; pointer-events:none; }
+.scene-camera-hint span { margin-inline:6px; color:#34343c; }
+.scene-render-message { position:absolute; top:48%; left:50%; transform:translate(-50%,-50%); width:min(320px,70%); text-align:center; font-size:11px; line-height:1.8; color:#848490; }
+.scene-instrument-switch { display:none; }
+
+@media(max-width:1180px) {
+  .scene-controller { width:min(430px,calc(100% - 44px)); }
+  .scene-drivebase { width:min(360px,calc(100% - 44px)); }
+  .scene-telemetry,.scene-gamepad { display:none; top:auto; bottom:80px; width:310px; }
+  .scene-telemetry.instrument-visible,.scene-gamepad.instrument-visible { display:block; }
+  .scene-instrument-switch { position:absolute; z-index:3; display:flex; gap:3px; bottom:22px; right:22px; padding:5px; border:1px solid rgb(79 79 87 / .42); border-radius:7px; background:rgb(11 11 12 / .9); backdrop-filter:blur(12px); }
+  .scene-instrument-switch button[data-slot=button] { height:29px; font-size:10px; border-color:transparent; }
+  .scene-instrument-switch button[aria-pressed=true] { border-color:#4a4a55; }
+  .scene-toolbar-label { display:none; }
+  .scene-camera-controls { left:22px; transform:none; }
+  .scene-camera-hint { display:none; }
+}
+@media(max-width:900px) {
+  .overview-scene.instrument-open .scene-drivebase { display:none; }
+  .scene-drivebase { bottom:80px; width:310px; }
+  .scene-controller .lifecycle-state { align-items:center; flex-direction:row; }
+  .scene-controller .runtime { justify-content:initial; }
+}
+@media(max-width:640px) {
+  .scene-controller { top:12px; left:12px; width:calc(100% - 24px); }
+  .scene-controller .controller-panel { padding:13px 13px 0; row-gap:12px; }
+  .scene-controller .controller-caption { padding-block:8px; }
+  .scene-controller .opmode-select { font-size:13px; }
+  .scene-drivebase { left:12px; bottom:72px; width:min(310px,calc(100% - 24px)); max-height:calc(100% - 260px); }
+  .scene-drivebase .pose-readout strong { font-size:15px; }
+  .scene-telemetry,.scene-gamepad { right:12px; bottom:72px; width:min(340px,calc(100% - 24px)); }
+  .scene-camera-controls { left:12px; bottom:14px; padding:4px; }
+  .scene-camera-controls button[data-slot=button] { padding-inline:7px; }
+  .scene-instrument-switch { right:12px; bottom:14px; padding:4px; }
+  .scene-instrument-switch button[data-slot=button] { padding-inline:7px; }
+}
+@media(max-height:600px) {
+  .scene-drivebase { bottom:74px; max-height:calc(100% - 235px); }
+  .scene-drivebase .pose-readout { padding-block:9px; }
+  .scene-drivebase .panel-heading { min-height:32px; }
+  .scene-telemetry .telemetry-panel.compact .telemetry-body { min-height:60px; max-height:90px; }
+  .scene-gamepad .compact .stick-pair { padding-bottom:17px; }
+  .scene-gamepad .compact .stick-display { width:44px; height:44px; }
+}

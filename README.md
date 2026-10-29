@@ -30,11 +30,16 @@ ftcsim -w --copy-sdk              # copy JARs rather than link this installation
 ftcsim --help
 ```
 
+Press **Ctrl+C** once to stop the server. Outputs stop immediately, and SDK and
+Driver Station sockets close together with a bounded grace period, including
+clients that have stopped responding. The port is released for the next run.
+
 Hardware maps belong to the Driver Station browser. **Settings → Hardware map**
 provides driver selection, names, hub/port assignments,
-device settings, and nested Pinpoint pod configuration. **Load from file** and
-**Save to file** import/export portable JSON maps. Drag-and-drop and
-**Paste JSON instead** also load maps when file dialogs are unavailable. Edits persist in
+device settings, and nested Pinpoint pod configuration. **Save robot** exports an `.fs` ZIP archive containing `robot.json` and GLB
+files under `models/`. **Load robot** and drag-and-drop restore hardware,
+mechanisms, models, and origin links together. Existing JSON robot files and
+**Paste JSON** remain available for older configurations. Edits persist in
 localStorage per simulator origin and SDK address. Saved maps restore when the
 DS reconnects; a new SDK starts empty and waits for the DS to apply a map.
 Loaded maps display device counts and named driver cards immediately. If browser
@@ -47,7 +52,7 @@ Use **Settings → Mechanisms** to connect four motors to a mecanum
 physical model and optionally connect an existing Pinpoint with its X/Y pods.
 Configure motor RPM, encoder resolution, physical direction, and goBILDA presets
 on **Settings → Hardware map**. Configure wheel dimensions, external gearing, and mounting directions,
-then **Apply to simulator** while stopped. Definitions save separately in browser
+then **Update simulation** while stopped. Definitions save separately in browser
 storage. The live widget shows physical pose and wheel speeds. Mechanisms connect
 drivers entirely inside the simulator; the SDK and TeamCode remain unchanged.
 See [MECHANISMS.md](MECHANISMS.md) for configuration and extension details.

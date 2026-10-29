@@ -1,12 +1,14 @@
 import type { Station } from './station.svelte';
 import type { Mechanism, MechanismType } from './types';
-import { canonical, copy, defaults, mechanismError } from './configuration';
+import { canonical, copy, defaults, mechanismError, mechanismPhysics } from './configuration';
 
 export class MechanismConfiguration {
   definitions = $state<Mechanism[]>([]);
   catalog = $state<MechanismType[]>([]);
   hasSaved = $state(false);
   busy = $state(false);
+  applyMs = $state<number|null>(null);
+  serverMs = $state<number|null>(null);
   loaded = $state(false);
   message = $state('');
   storageError = $state('');
@@ -15,10 +17,10 @@ export class MechanismConfiguration {
   private epoch = 0;
   constructor(private station:Station) {}
   get error() { return this.loaded ? mechanismError(this.definitions,this.catalog,this.station.hardware.devices) : 'Loading mechanism catalog…'; }
-  get synchronized() { const state = this.station.physical; return Boolean(state && !state.mechanism_error && canonical(this.definitions) === canonical(state.mechanism_configuration) && state.mechanisms.length === this.definitions.length); }
-  get canApply() { return this.loaded && this.station.canConfigure && this.station.hardware.ready && !this.busy && !this.error; }
+  get synchronized() { const state = this.station.physical; return Boolean(state && !state.mechanism_error && canonical(mechanismPhysics(this.definitions)) === canonical(state.mechanism_configuration) && state.mechanisms.length === this.definitions.length); }
+  get canApply() { return !this.station.robotConfiguration.importing && this.loaded && this.station.canConfigure && this.station.hardware.ready && !this.busy && !this.error && !this.synchronized; }
   load(endpoint:string) {
-    this.epoch++; this.key = `ftcsim.mechanisms.v1:${encodeURIComponent(endpoint)}`; this.definitions = []; this.hasSaved = false; this.busy = false; this.message = ''; this.storageError = ''; this.restorePending = true;
+    this.epoch++; this.key = `ftcsim.mechanisms.v1:${encodeURIComponent(endpoint)}`; this.definitions = []; this.hasSaved = false; this.busy = false; this.applyMs=this.serverMs=null; this.message = ''; this.storageError = ''; this.restorePending = true;
     try {
       const text = localStorage.getItem(this.key);
       if (text === null) return;
@@ -43,24 +45,29 @@ export class MechanismConfiguration {
   add(type:string) {
     const schema = this.catalog.find(item => item.type === type); if (!schema || this.definitions.length >= 64) return;
     let name = type, suffix = 2; while (this.definitions.some(item => item.name === name)) name = `${type}${suffix++}`;
-    this.definitions.push({name,type,drivers:{},options:defaults(schema)}); this.save();
+    this.definitions.push({name,type,drivers:{},options:defaults(schema),...(type==='custom'?{visual:{parent:this.definitions.find(item=>item.type==='mecanum')?.name??''}}:{})}); this.save();
   }
   remove(definition:Mechanism) { this.definitions.splice(this.definitions.indexOf(definition),1); this.save(); }
   restore() {
-    if (!this.restorePending || !this.hasSaved || !this.station.physical || !this.canApply) return;
-    this.restorePending = false; if (!this.synchronized) void this.apply();
+    if (!this.restorePending || !this.hasSaved || !this.station.physical) return;
+    if(this.synchronized){this.restorePending=false;return;}
+    if(!this.canApply)return;
+    this.restorePending = false; void this.apply();
   }
   async apply() {
     if (!this.canApply) return;
-    this.save(); const epoch = this.epoch, definitions = copy(this.definitions); this.busy = true;
+    this.save(); const epoch = this.epoch, definitions = copy(mechanismPhysics(this.definitions)); this.busy = true; const started=performance.now(); this.serverMs=null;
     try {
       const response = await fetch('/sim/mechanisms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mechanisms:definitions}),signal:AbortSignal.timeout(7000)});
+      const timing=response.headers?.get('Server-Timing')?.match(/mechanisms;dur=([\d.]+)/);
       const state = await response.json();
+      if (epoch !== this.epoch) return;
+      if(timing)this.serverMs=Number(timing[1]);
       if (!response.ok) throw Error(state.message || 'Simulator rejected configuration.');
       if (epoch !== this.epoch) return;
       if (state.mechanism_error || canonical(state.mechanism_configuration) !== canonical(definitions) || state.mechanisms?.length !== definitions.length) throw Error('Simulator did not confirm the configuration.');
-      this.station.physical = state; this.message = `Applied ${definitions.length} mechanism${definitions.length === 1 ? '' : 's'}.`; this.station.log(this.message);
-    } catch (error) { if (epoch === this.epoch) { this.message = `Mechanisms not applied: ${error instanceof Error ? error.message : error}`; this.station.log(this.message,'error'); } }
-    finally { if (epoch === this.epoch) this.busy = false; }
+      this.station.physical = state; this.message = `Simulation updated · ${Math.round(performance.now()-started)} ms. Drivetrain pose reset; model files stay in this browser.`; this.station.log(this.message);
+    } catch (error) { if (epoch === this.epoch) { const reason=error instanceof Error&&['TimeoutError','AbortError'].includes(error.name)?'The simulator did not reply within 7 seconds. Check its connection and the Performance panel.':error instanceof Error?error.message:String(error);this.message = `Simulation not updated: ${reason}`; this.station.log(this.message,'error'); } }
+    finally { if (epoch === this.epoch) { this.applyMs=performance.now()-started; this.busy = false; } }
   }
 }

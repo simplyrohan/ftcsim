@@ -1,7 +1,7 @@
 import type { Device, DeviceState, DriverType, Mechanism, MechanismType, Option } from './types';
 export const copy = <T>(value:T):T => JSON.parse(JSON.stringify(value));
 export const canonical = (value:unknown):string => JSON.stringify(value, (_key,item) => item && !Array.isArray(item) && typeof item === 'object' ? Object.fromEntries(Object.keys(item).sort().map(key => [key,item[key]])) : item);
-export const flatten = (devices:Device[]):Device[] => devices.flatMap(device => [device,...flatten(device.children ?? [])]);
+export const flatten = <T extends {children?:T[]}>(devices:T[]):T[] => devices.flatMap(device => [device,...flatten<T>(device.children ?? [])]);
 export const defaults = (schema:{options:Option[]}) => Object.fromEntries(schema.options.map(option => [option.name,option.default]));
 export const optionValue = (options:Record<string,any>|undefined, option:Option) => options && option.name in options ? options[option.name] : option.default;
 export const choiceValue = (choice:any) => typeof choice === 'object' ? choice.value : choice;
@@ -57,6 +57,7 @@ export function mechanismError(definitions:Mechanism[], catalog:MechanismType[],
   const drivers = flatten(devices), claimed = new Set<string>(), names = new Set<string>();
   if (definitions.length > 64) return 'At most 64 mechanisms may be configured.';
   for (const definition of definitions) {
+    const visualError = mechanismVisualError(definition,definitions); if (visualError) return visualError;
     const schema = catalog.find(type => type.type === definition.type);
     if (!schema) return `Unknown mechanism type: ${definition.type}.`;
     if (!definition.name.trim() || names.has(definition.name)) return 'Mechanisms need unique, nonempty names.';
@@ -72,9 +73,23 @@ export function mechanismError(definitions:Mechanism[], catalog:MechanismType[],
         if (!child || child.type !== requirement.type || Object.entries(requirement.options ?? {}).some(([key,value]) => (child.options?.[key] ?? value) !== value)) return `${driver.name} needs its ${port.toUpperCase()} ${requirement.type} driver.`;
         consumed.push(child);
       }
-      for (const item of consumed) { if (claimed.has(item.name)) return `${item.name} is already connected to a mechanism.`; claimed.add(item.name); }
+      for (const item of schema.exclusive === false ? [] : consumed) { if (claimed.has(item.name)) return `${item.name} is already connected to a mechanism.`; claimed.add(item.name); }
     }
     const error = optionError(definition.options,schema.options); if (error) return `${definition.name}: ${error}`;
   }
   return '';
 }
+
+export function mechanismVisualError(definition:Mechanism, definitions:Mechanism[]):string {
+  const visual=definition.visual;
+  if (visual===undefined) return '';
+  if (!visual || typeof visual!=='object' || Array.isArray(visual) || Object.keys(visual).some(key=>!['model','position','rotation','scale','parent'].includes(key))) return `${definition.name}: invalid visual settings.`;
+  for (const key of ['position','rotation'] as const) if (visual[key]!==undefined && (!Array.isArray(visual[key]) || visual[key]!.length!==3 || !visual[key]!.every(value=>typeof value==='number' && Number.isFinite(value)))) return `${definition.name}: ${key} needs three finite numbers.`;
+  if (visual.scale!==undefined && (typeof visual.scale!=='number' || !Number.isFinite(visual.scale) || visual.scale<=0)) return `${definition.name}: model scale must be positive.`;
+  if (visual.model!==undefined && (!visual.model || typeof visual.model!=='object' || typeof visual.model.id!=='string' || !visual.model.id || typeof visual.model.name!=='string' || Object.keys(visual.model).some(key=>!['id','name'].includes(key)))) return `${definition.name}: invalid model reference.`;
+  if (visual.parent!==undefined && (typeof visual.parent!=='string' || visual.parent && !definitions.some(item=>item.name===visual.parent))) return `${definition.name}: choose an available mechanism origin.`;
+  const seen=new Set([definition.name]); let parent=visual.parent;
+  while(parent){ if(seen.has(parent))return `${definition.name}: mechanism origins cannot form a cycle.`; seen.add(parent); parent=definitions.find(item=>item.name===parent)?.visual?.parent; }
+  return '';
+}
+export const mechanismPhysics = (definitions:Mechanism[]) => definitions.map(({visual,...definition})=>definition);

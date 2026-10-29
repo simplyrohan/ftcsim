@@ -2,6 +2,7 @@
 import inspect
 from .base import Mechanism
 from .mecanum import MecanumDrivetrain
+from .custom import CustomMechanism
 
 
 class MechanismRegistry:
@@ -37,7 +38,9 @@ class MechanismRegistry:
                     continue
                 driver = drivers.get(reference) if isinstance(reference, str) else None
                 if not isinstance(driver, spec['driver']):
-                    raise ValueError(f'{name}: {spec["label"]} must reference a configured {spec["driver"].kind} driver')
+                    types = spec['driver'] if isinstance(spec['driver'], tuple) else (spec['driver'],)
+                    expected = ' or '.join(driver_type.kind for driver_type in types)
+                    raise ValueError(f'{name}: {spec["label"]} must reference a configured {expected} driver')
                 bound[slot] = driver
             options = definition.get('options', {})
             parameters = inspect.signature(cls.__init__).parameters.keys() - {'self', 'name', 'drivers'}
@@ -65,13 +68,15 @@ class MechanismRegistry:
                               type='number' if isinstance(parameter.default, (int, float)) else 'text')
                 option.update(cls.option_metadata.get(name, {}))
                 options.append(option)
-            slots = [dict(name=name, label=spec['label'], types=[spec['driver'].kind], required=spec['required'],
+            slots = [dict(name=name, label=spec['label'], types=[driver.kind for driver in (spec['driver'] if isinstance(spec['driver'], tuple) else (spec['driver'],))], required=spec['required'],
                           children=spec.get('children', {}))
                      for name, spec in cls.driver_slots.items()]
             result.append(dict(type=kind, label=cls.display_name, description=getattr(cls, 'description', ''),
-                               drivers=slots, options=options))
+                               drivers=slots, options=options, exclusive=getattr(cls, 'exclusive', True)))
         return result
 
 
 MECHANISMS = MechanismRegistry()
 MECHANISMS.register(MecanumDrivetrain)
+
+MECHANISMS.register(CustomMechanism)

@@ -58,7 +58,7 @@ def main(argv=None):
         else:
             logger.info('Driver Station: http://localhost:%s/ds', args.port)
         web.run_app(create_app(dev=args.dev), host='127.0.0.1', port=args.port,
-                    shutdown_timeout=2, print=None)
+                    shutdown_timeout=1, print=None)
     except OSError as error:
         Console(stderr=True).print(f'Cannot start simulator: {error}', style='red', markup=False)
         return 1

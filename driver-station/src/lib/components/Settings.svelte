@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { Cable, Cpu, Layers, RefreshCw } from '@lucide/svelte';
+  import { Cable, Cpu, Layers, RefreshCw, Activity } from '@lucide/svelte';
   import * as Dialog from '$lib/components/ui/dialog';
   import * as Tabs from '$lib/components/ui/tabs';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
+  import PerformanceSettings from './PerformanceSettings.svelte';
   import HardwareSettings from './HardwareSettings.svelte';
   import MechanismSettings from './MechanismSettings.svelte';
   import type { Station } from '$lib/model/station.svelte';
@@ -20,6 +21,7 @@
         <Tabs.Trigger value="connection"><Cable size={15}/>Connection</Tabs.Trigger>
         <Tabs.Trigger value="hardware"><Cpu size={15}/>Hardware map{#if station.hardware.hasDraft&&!station.hardware.synchronized}<span class="unsaved-dot"></span>{/if}</Tabs.Trigger>
         <Tabs.Trigger value="mechanisms"><Layers size={15}/>Mechanisms{#if station.mechanisms.hasSaved&&!station.mechanisms.synchronized}<span class="unsaved-dot"></span>{/if}</Tabs.Trigger>
+        <Tabs.Trigger value="performance"><Activity size={15}/>Performance</Tabs.Trigger>
       </Tabs.List>
       <div class="settings-content">
         <Tabs.Content value="connection"><div class="settings-heading"><div><h2>Connection</h2><p>Connect the Driver Station to your desktop Robot Controller.</p></div><Cable size={19}/></div>
@@ -29,11 +31,12 @@
             <Button variant="outline" type="submit" disabled={station.connecting}><RefreshCw size={14}/>{station.connecting?'Connecting…':'Reconnect'}</Button>
           </form>
           <div class="connection-facts"><div><span>Simulator server</span><strong>{station.simulatorConnected?'Connected':'Reconnecting…'}</strong></div><div><span>SDK</span><strong>{station.connecting?'Connecting…':station.connected?station.controller?'Connected · controller':'Connected · observer':'Disconnected'}</strong></div><div><span>SDK → simulator</span><strong>{!station.simulatorConnected?'Unknown':station.physical?.connected?'Connected':'Waiting for SDK'}</strong></div><div><span>Storage</span><strong>This browser · per SDK address</strong></div></div>
-          <p class="fine-print">Hardware maps and mechanisms stay with this browser. Save your hardware map to a file to move it between workspaces.</p>
+          <p class="fine-print">Hardware maps and mechanisms stay with this browser. Save a robot configuration file to move both between workspaces.</p>
           {#if station.notice}<p class="form-notice" role="status">{station.notice}</p>{/if}
         </Tabs.Content>
         <Tabs.Content value="hardware"><HardwareSettings {station}/></Tabs.Content>
-        <Tabs.Content value="mechanisms"><MechanismSettings {station}/></Tabs.Content>
+        <Tabs.Content value="performance"><PerformanceSettings {station}/></Tabs.Content>
+        <Tabs.Content value="mechanisms"><MechanismSettings {station} active={open&&tab==='mechanisms'}/></Tabs.Content>
       </div>
     </Tabs.Root>
   </Dialog.Content>
