@@ -1,5 +1,6 @@
 <script lang="ts">
   import RobotViewport from './RobotViewport.svelte';
+  import { Switch } from '$lib/components/ui/switch';
   import type { Station } from '$lib/model/station.svelte';
   import type { Mechanism,MechanismState } from '$lib/model/types';
   import { flatten } from '$lib/model/configuration';
@@ -26,5 +27,5 @@
 <aside class="mechanism-preview">
   <div class="mechanism-preview-heading"><span class="eyebrow">Live preview</span><span>Draft · not applied</span></div>
   <div class="mechanism-preview-canvas"><RobotViewport {active} preview diagnostics={station.diagnostics} label="Mechanism preview" showOrigins mechanisms={states} {definitions} selected={definition.name}/></div>
-  {#if definition.type==='custom'}<div class="mechanism-preview-controls"><label class="preview-toggle"><input type="checkbox" bind:checked={preview}/>Test input manually</label>{#if preview}<label class="field"><span>{actuator?.type==='servo'?'Servo position':'Motor revolutions'}<output>{format(input,2)}</output></span><input type="range" aria-label="Preview actuator position" min={actuator?.type==='servo'?0:-1} max="1" step="0.005" bind:value={input}/></label>{:else}<p>Following live actuator state. Enable manual input to test without running robot code.</p>{/if}</div>{/if}
+  {#if definition.type==='custom'}<div class="mechanism-preview-controls"><label class="preview-toggle"><Switch bind:checked={preview} size="sm" aria-label="Test input manually"/>Test input manually</label>{#if preview}<label class="field"><span>{actuator?.type==='servo'?'Servo position':'Motor revolutions'}<output>{format(input,2)}</output></span><input type="range" aria-label="Preview actuator position" min={actuator?.type==='servo'?0:-1} max="1" step="0.005" bind:value={input}/></label>{:else}<p>Following live actuator state. Enable manual input to test without running robot code.</p>{/if}</div>{/if}
 </aside>

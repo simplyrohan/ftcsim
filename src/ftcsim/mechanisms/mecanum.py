@@ -70,6 +70,20 @@ class MecanumDrivetrain(Mechanism):
     def sensor_inputs(self):
         return {self.pinpoint: self.motion} if self.pinpoint else {}
 
+    def place(self, x_mm, y_mm, heading_deg):
+        """Place the chassis in field space without inventing encoder travel.
+
+        This out-of-band simulation edit leaves sensor coordinates relative to
+        their SDK-defined origin. Only subsequent motion produces sensor input.
+        """
+        x = number(x_mm, 'x_mm')
+        y = number(y_mm, 'y_mm')
+        heading = math.radians(number(heading_deg, 'heading_deg'))
+        if any(abs(self.drivers[wheel].shaft_revolutions_per_second) > 1e-6 for wheel in self.WHEELS):
+            raise ValueError('Stop the drivetrain before changing its start position')
+        self.pose = Pose2D(x, y, (heading + math.pi) % (2 * math.pi) - math.pi)
+        self.failsafe()
+
     def failsafe(self):
         super().failsafe()
         self.wheel_speeds = dict.fromkeys(self.WHEELS, 0.0)

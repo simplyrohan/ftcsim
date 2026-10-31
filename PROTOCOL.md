@@ -155,6 +155,14 @@ the prior mechanisms. Snapshots on `/sim/drivers` and `/sim/state` additionally
 include `mechanisms` (live model state), `mechanism_configuration` (definitions),
 and `mechanism_error` (e.g. suspended bindings after a hardware-map replacement).
 
+`POST /sim/mechanisms/place` accepts `{"mechanism":"drivebase","x_mm":0,
+"y_mm":0,"heading_deg":90}` from the simulator origin. The named mechanism must
+be an applied mecanum drivetrain with stopped motors. All coordinates must be
+finite numbers. Success returns a physical snapshot; invalid placement returns
+HTTP 400 without changing the pose. This is an instantaneous field placement,
+not simulated sensor motion: encoder and Pinpoint state remain untouched. The
+DS applies enabled per-OpMode start poses before sending the SDK's `init` frame.
+
 This API is exclusively between the browser and Python. No mechanism messages or
 definitions cross the SDK transport or appear in the SDK HardwareMap. See
 [MECHANISMS.md](MECHANISMS.md) for the mecanum model and extension contract.

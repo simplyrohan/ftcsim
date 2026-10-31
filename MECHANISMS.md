@@ -152,7 +152,7 @@ control the SDK lifecycle through this mechanism API.
 
 ## Custom mechanisms and uploaded models
 
-In **Settings → Mechanisms**, select a mechanism using the row of names. Both
+In **Settings → Mechanisms**, click **Edit** on a mechanism’s summary row. Both
 mecanum and custom mechanisms have the same **Model & origin** editor and live
 3D preview. Mecanum adds **Connections** and **Drive geometry** settings; custom
 mechanisms add actuator **Connections** and **Motion** mapping.
@@ -251,7 +251,8 @@ changing actuator state or producing an extra robot snapshot. Probes pause when
 the page is hidden and reset on disconnect.
 
 Covered, inactive-tab, and offscreen viewports stop rendering. The mechanism
-preview is capped at 30 FPS at a 1× pixel ratio. Placement, origin, scale, and
+preview is capped at 30 FPS and uses the same display resolution as Overview
+(up to a 2× pixel ratio). Placement, origin, scale, and
 motion edits update transforms on the existing model; only a different GLB or
 procedural geometry dimensions rebuilds it. Hidden Overview scenes also defer
 model synchronization until visible again. Model-build counters help identify

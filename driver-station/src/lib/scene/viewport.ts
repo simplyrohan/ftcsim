@@ -1,7 +1,9 @@
 import type { ViewportStats } from '$lib/model/diagnostics.svelte';
 import { UploadedVisual } from './models';
+import { loadField } from './field';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MecanumVisual, disposeObject, type MechanismVisual } from './mecanum';
 import type { Mechanism, MechanismState, Options } from '$lib/model/types';
 
@@ -13,8 +15,13 @@ export type CameraView = 'perspective'|'top';
 
 export class DrivebaseViewport {
   private scene=new THREE.Scene();
+  private ground=new THREE.Group();
+  private field?:THREE.Group;
+  private fieldVisible=false;
+  private fieldLoading=false;
   private camera=new THREE.PerspectiveCamera(38,1,.01,120);
   private renderer:THREE.WebGLRenderer;
+  private environment:THREE.WebGLRenderTarget;
   private controls:OrbitControls;
   private observer:ResizeObserver;
   private intersection?:IntersectionObserver;
@@ -42,23 +49,32 @@ export class DrivebaseViewport {
   private visibility=()=>{ this.visible=!document.hidden;this.updateLoop(); };
   private contextLost=(event:Event)=>{event.preventDefault();this.renderer.setAnimationLoop(null);this.graphicsError='The 3D graphics context was lost. Reload this page to restore the viewer.';this.onError(this.graphicsError);};
 
-  constructor(private canvas:HTMLCanvasElement,private onError:(message:string)=>void, private showOrigins=false, private options:{preview?:boolean;onMetrics?:(stats:ViewportStats)=>void}={}) {
+  constructor(private canvas:HTMLCanvasElement,private onError:(message:string)=>void, private showOrigins=false, private options:{preview?:boolean;onMetrics?:(stats:ViewportStats)=>void;onFieldStatus?:(message:string)=>void}={}) {
     this.renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,powerPreference:'high-performance'});
     this.renderer.setClearColor(0x000000,0);
+    this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure=1;
+    // Subtle studio reflections keep PBR metals readable without a bright fill.
+    const room=new RoomEnvironment(),pmrem=new THREE.PMREMGenerator(this.renderer);
+    this.environment=pmrem.fromScene(room,.04);room.dispose();pmrem.dispose();
+    this.scene.environment=this.environment.texture;this.scene.environmentIntensity=.2;
     this.maxFPS=options.preview?30:60;
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio,options.preview?1:2));
-    this.scene.fog=new THREE.Fog(0x0b0b0c,5,17);
-    this.scene.add(new THREE.HemisphereLight(0xf0f0ff,0x23232b,2.6));
-    const key=new THREE.DirectionalLight(0xffffff,3.2);key.position.set(2,5,3);this.scene.add(key);
-    const rim=new THREE.DirectionalLight(0xb7c6e0,1.5);rim.position.set(-3,2,-3);this.scene.add(rim);
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    this.scene.fog=new THREE.Fog(0x0c0d0d,5,17);
+    // A camera-relative key keeps surfaces readable while orbiting. The small
+    // offset reveals edges; weak fill preserves dark faces and material contrast.
+    const key=new THREE.DirectionalLight(0xffffff,2.5);
+    key.position.set(.4,.6,0);key.target.position.set(0,0,-1);
+    this.camera.add(key,key.target);this.scene.add(this.camera);
+    this.scene.add(new THREE.AmbientLight(0xffffff,.12));
     for (const [divisions,opacity] of [[160,.32],[40,.26]]) {
       const grid=new THREE.GridHelper(40,divisions,0x545461,0x393941);
       const materials=Array.isArray(grid.material)?grid.material:[grid.material];
       materials.forEach(material=>{material.transparent=true;material.opacity=opacity;material.depthWrite=false;});
-      grid.position.y=divisions===40?.001:0;this.scene.add(grid);
+      grid.position.y=divisions===40?.001:0;this.ground.add(grid);
     }
     const origin=new THREE.Mesh(new THREE.RingGeometry(.055,.058,48),new THREE.MeshBasicMaterial({color:0x686875,transparent:true,opacity:.65,side:THREE.DoubleSide}));
-    origin.rotation.x=-Math.PI/2;origin.position.y=.003;this.scene.add(origin);
+    origin.rotation.x=-Math.PI/2;origin.position.y=.003;this.ground.add(origin);this.scene.add(this.ground);
     this.controls=new OrbitControls(this.camera,canvas);
     this.controls.enableDamping=this.smooth;this.controls.dampingFactor=.09;
     this.controls.minDistance=.65;this.controls.maxDistance=24;this.controls.maxPolarAngle=Math.PI/2-.035;
@@ -115,6 +131,20 @@ export class DrivebaseViewport {
     if(this.active!==selected){this.active=selected;this.followInitialized=false;if(this.follow)this.recenter();}
   }
   private reportErrors(){this.onError([this.graphicsError,...this.modelErrors.values()].filter(Boolean).join(' · '));}
+  async setField(visible:boolean){
+    this.fieldVisible=visible;
+    if(this.field){this.field.visible=visible;this.ground.visible=!visible;return;}
+    if(!visible||this.fieldLoading)return;
+    this.fieldLoading=true;this.options.onFieldStatus?.('Loading field…');
+    try {
+      const field=await loadField();
+      if(this.disposed){disposeObject(field);return;}
+      this.field=field;field.visible=this.fieldVisible;this.ground.visible=!this.fieldVisible;this.scene.add(field);
+      if(this.fieldVisible)this.recenter();
+      this.options.onFieldStatus?.('');
+    } catch {if(!this.disposed)this.options.onFieldStatus?.('Field could not load. Toggle Field to retry.');}
+    finally {this.fieldLoading=false;}
+  }
   setActive(enabled:boolean){if(this.enabled===enabled)return;this.enabled=enabled;this.updateLoop();}
   private updateLoop(){this.previous=this.lastRendered=0;this.statsSince=performance.now();this.frameCount=this.renderTime=0;this.renderer.setAnimationLoop(this.visible&&this.enabled&&this.inView&&!this.graphicsError?this.render:null);if(!this.visible||!this.enabled||!this.inView)this.reportMetrics(false);}
   private reportMetrics(active:boolean){this.options.onMetrics?.({fps:active?this.frameCount*1000/Math.max(1,performance.now()-this.statsSince):0,renderMs:this.frameCount?this.renderTime/this.frameCount:0,drawCalls:this.renderer.info.render.calls,triangles:this.renderer.info.render.triangles,geometries:this.renderer.info.memory.geometries,textures:this.renderer.info.memory.textures,modelBuilds:this.modelBuilds,active});}
@@ -127,7 +157,8 @@ export class DrivebaseViewport {
     this.view=view;
     const target=this.activePosition() ?? new THREE.Vector3();
     this.controls.target.copy(target);
-    this.camera.position.copy(target).add(view==='top'?new THREE.Vector3(0,2.8,.001):new THREE.Vector3(1.45,1.3,1.8));
+    const field=this.field?.visible;
+    this.camera.position.copy(target).add(view==='top'?new THREE.Vector3(0,field?6.5:2.8,.001):field?new THREE.Vector3(3.8,3.4,4.4):new THREE.Vector3(1.45,1.3,1.8));
     this.controls.update();this.followPosition.copy(target);this.followInitialized=true;
   }
 
@@ -156,6 +187,6 @@ export class DrivebaseViewport {
     document.removeEventListener('visibilitychange',this.visibility);this.canvas.removeEventListener('webglcontextlost',this.contextLost);
     for(const entry of this.models.values())entry.visual.object.removeFromParent();
     for(const entry of this.models.values())entry.visual.dispose();this.models.clear();
-    disposeObject(this.scene);this.renderer.dispose();this.renderer.forceContextLoss();
+    disposeObject(this.scene);this.environment.dispose();this.renderer.dispose();this.renderer.forceContextLoss();
   }
 }

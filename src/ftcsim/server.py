@@ -155,6 +155,24 @@ async def configure_mechanisms(request):
                              'Server-Timing': f'mechanisms;dur={(perf_counter() - started) * 1000:.3f}'})
 
 
+async def place_mechanism(request):
+    origin = request.headers.get('Origin')
+    if origin and origin != f'{request.scheme}://{request.host}':
+        raise web.HTTPForbidden(text='Open the Driver Station from the simulator origin')
+    try:
+        data = await request.json()
+        if not isinstance(data, dict) or set(data) != {'mechanism', 'x_mm', 'y_mm', 'heading_deg'}:
+            raise ValueError('Expected mechanism, x_mm, y_mm and heading_deg')
+        robot = request.app[ROBOT]
+        mechanism = next((item for item in robot.mechanisms if item.name == data['mechanism']), None)
+        if mechanism is None or not callable(getattr(mechanism, 'place', None)):
+            raise ValueError('Choose an applied drivetrain for the start position')
+        mechanism.place(data['x_mm'], data['y_mm'], data['heading_deg'])
+    except (ValueError, TypeError) as error:
+        return web.json_response(dict(message=str(error)), status=400)
+    return web.json_response(robot.snapshot(), headers={'Cache-Control': 'no-store'})
+
+
 async def ds(request):
     """Serve the SvelteKit static bundle and its client-side routes."""
     root = (ROOT / 'web').resolve()
@@ -227,6 +245,7 @@ def create_app(*, dev=False):
     app.router.add_get('/sim/driver-types', driver_types)
     app.router.add_get('/sim/mechanism-types', mechanism_types)
     app.router.add_post('/sim/mechanisms', configure_mechanisms)
+    app.router.add_post('/sim/mechanisms/place', place_mechanism)
     if not dev:
         app.router.add_get('/', home)
         app.router.add_get('/ds', ds)

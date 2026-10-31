@@ -2,10 +2,11 @@ import { decodeRobotArchive, encodeRobotArchive, modelPath } from './robot-archi
 import { loadModel, saveModel, readBinaryFile, modelFromBase64, validateGLB, MAX_ROBOT_BYTES } from './model-assets';
 import type { Station } from './station.svelte';
 import type { Mechanism } from './types';
-import { copy, hardwareError, mechanismError } from './configuration';
+import { canonical, copy, flatten, hardwareError, mechanismError } from './configuration';
 import { decodeHardwareMap, readHardwareFile } from './hardware-file';
 
 export const ROBOT_CONFIGURATION_FORMAT = 'ftcsim.robot-configuration';
+const summary=(drivers:number,mechanisms:number)=>`${drivers} driver${drivers===1?'':'s'} and ${mechanisms} mechanism${mechanisms===1?'':'s'}`;
 
 /** A portable snapshot of both editors. Loading changes drafts, never live devices. */
 export class RobotConfigurationFile {
@@ -18,7 +19,7 @@ export class RobotConfigurationFile {
   async importText(text:string, label='JSON') {
     if(this.busy)throw Error('Wait for the current configuration operation to finish.');
     this.importing=true;
-    try { await this.importRecord(text,label); } finally { this.importing=false; }
+    try { return await this.importRecord(text,label); } finally { this.importing=false; }
   }
   private async importRecord(text:string, label:string, archiveAssets?:Map<string,ArrayBuffer>) {
     if (this.station.hardware.busy || this.station.mechanisms.busy) throw Error('Wait for configuration changes to finish applying.');
@@ -46,17 +47,24 @@ export class RobotConfigurationFile {
       } else decoded.set(id,modelFromBase64(assets[id]));
     }
     const endpoint=this.station.endpoint;
+    const before=canonical([hw.devices,hw.notes,mech.definitions]);
+    const allowed=()=>endpoint===this.station.endpoint&&!hw.busy&&!mech.busy&&canonical([hw.devices,hw.notes,mech.definitions])===before;
+    if((hw.devices.length||mech.definitions.length)&&!await this.station.confirmation.ask({title:'Replace robot configuration?',description:`Load “${label}” and replace the configuration saved in this browser.`,action:'Replace configuration',details:[`Replaces ${summary(hw.count,mech.definitions.length)} with ${summary(flatten(hardware.devices).length,mechanisms.length)}.`,'Save a robot file first if you want to keep the current setup.','The SDK and live simulation change only after you apply the imported configuration.'],allowed})){
+      this.message='Import cancelled. Current robot configuration kept.';return false;
+    }
+    if(!allowed())throw Error('The robot configuration changed while loading. Load the file again.');
     // Give imported assets fresh IDs so a rejected import cannot overwrite a live model.
     const imported=new Map<string,string>();
     for (const [id,data] of decoded) { const replacement=crypto.randomUUID(); await saveModel(replacement,data); imported.set(id,replacement); }
     if (endpoint!==this.station.endpoint) throw Error('The SDK connection changed while loading the file. Load it again.');
-    if (hw.busy || mech.busy) throw Error('Wait for configuration changes to finish applying.');
+    if(!allowed())throw Error('The robot configuration changed while loading. Load the file again.');
     for(const item of mechanisms)if(item.visual?.model)item.visual.model.id=imported.get(item.visual.model.id)!;
     // Validate the entire file before replacing either editor, including driver bindings.
     hw.devices = hardware.devices; hw.notes = hardware.notes ?? ''; mech.definitions = mechanisms;
     hw.restorePending = mech.restorePending = false;
     hw.save(); mech.save();
     this.message = `Loaded ${label} · ${hw.count} devices · ${mechanisms.length} mechanisms. Apply hardware first, then mechanisms.`;
+    return true;
   }
   async importFile(file:File) {
     if (this.busy) return;

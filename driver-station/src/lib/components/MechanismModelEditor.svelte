@@ -4,8 +4,9 @@
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { readBinaryFile, saveModel, MAX_MODEL_BYTES } from '$lib/model/model-assets';
+  import type { Confirmation } from '$lib/model/confirmation.svelte';
   import type { Mechanism } from '$lib/model/types';
-  let { definition, definitions, disabled=false, onchange }: {definition:Mechanism;definitions:Mechanism[];disabled?:boolean;onchange:()=>void}=$props();
+  let { definition=$bindable(), definitions, confirmation, disabled=false, onchange }: {definition:Mechanism;definitions:Mechanism[];confirmation:Confirmation;disabled?:boolean;onchange:()=>void}=$props();
   let uploading=$state(false),message=$state(''),input:HTMLInputElement,disposed=false;
   onDestroy(()=>disposed=true);
   function update(key:'position'|'rotation',index:number,value:string) {
@@ -24,11 +25,22 @@
       const [{parseModel},{disposeObject}]=await Promise.all([import('$lib/scene/models'),import('$lib/scene/mecanum')]);
       const object=await parseModel(data);disposeObject(object);
       if(disposed)return;
+      const previous=definition.visual?.model;
+      const allowed=()=>!disposed&&!disabled&&definition.visual?.model===previous;
+      if(previous&&!await confirmation.ask({title:'Replace mechanism model?',description:`Replace “${previous.name}” on “${definition.name}” with “${file.name}”.`,action:'Replace model',details:['The model assignment saves immediately. Position, orientation, and motion settings are kept.'],allowed}))return;
+      if(!allowed())return;
       const id=crypto.randomUUID();await saveModel(id,data);
       if(disposed)return;
       (definition.visual??={}).model={id,name:file.name};onchange();message='Model ready. Its original pivot and materials are preserved.';
     }catch(error){if(!disposed)message=`Model not loaded: ${error instanceof Error?error.message:error}`;}
     finally{if(!disposed)uploading=false;}
+  }
+  async function removeModel(){
+    const model=definition.visual?.model;
+    const allowed=()=>!disposed&&!disabled&&!!model&&definition.visual?.model===model;
+    if(!allowed())return;
+    if(!await confirmation.ask({title:'Remove mechanism model?',description:`Remove “${model!.name}” from “${definition.name}”.`,action:'Remove model',details:[definition.type==='mecanum'?'The built-in mecanum visual will be used.':'The mechanism will show its origin marker.','Position, orientation, and motion settings are kept. The change saves immediately.'],allowed})||!allowed())return;
+    delete definition.visual!.model;onchange();message='';
   }
 </script>
 <section class="mechanism-section">
@@ -36,7 +48,7 @@
   <div class="model-upload">
     <Box size={24} strokeWidth={1}/><div class="model-file-name"><strong>{definition.visual?.model?.name ?? (definition.type==='mecanum'?'Built-in mecanum model':'Origin marker')}</strong><span>{definition.visual?.model?'Saved in this browser · included in robot exports':'Your GLB replaces this visual only.'}</span></div>
     <label class="file-button">{#if uploading}<LoaderCircle size={13} class="animate-spin"/>{:else}<Upload size={13}/>{/if}<span>{uploading?'Loading…':definition.visual?.model?'Replace':'Upload GLB'}</span><input bind:this={input} type="file" accept=".glb,model/gltf-binary" aria-label={`Upload GLB for ${definition.name}`} disabled={disabled||uploading} onclick={()=>input.value=''} onchange={()=>{const file=input.files?.[0];if(file)void upload(file);}}/></label>
-    {#if definition.visual?.model}<Button variant="ghost" type="button" size="icon" aria-label="Remove uploaded model" disabled={disabled||uploading} onclick={()=>{delete definition.visual!.model;onchange();message='';}}><Trash2 size={13}/></Button>{/if}
+    {#if definition.visual?.model}<Button variant="ghost" type="button" size="icon" aria-label="Remove uploaded model" disabled={disabled||uploading} onclick={removeModel}><Trash2 size={13}/></Button>{/if}
   </div>
   {#if message}<p class="fine-print" role="status">{message}</p>{/if}
   <label class="field"><span>Model scale</span><div class="scale-input"><Input type="number" min="0.000001" step="any" value={definition.visual?.scale??1} {disabled} oninput={event=>{(definition.visual??={}).scale=event.currentTarget.value===''?NaN:Number(event.currentTarget.value);onchange();}}/><select class="control" aria-label="Model unit preset" {disabled} value={[1,.01,.001].includes(definition.visual?.scale??1)?String(definition.visual?.scale??1):'custom'} onchange={event=>{(definition.visual??={}).scale=Number(event.currentTarget.value);onchange();}}><option value="1">Meters · 1×</option><option value="0.01">Centimeters · 0.01×</option><option value="0.001">Millimeters · 0.001×</option><option value="custom" disabled>Custom scale</option></select></div></label>

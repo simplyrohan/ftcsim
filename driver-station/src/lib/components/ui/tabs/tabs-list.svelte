@@ -20,6 +20,7 @@
 <script lang="ts">
 	import { Tabs as TabsPrimitive } from "bits-ui";
 	import { cn } from "$lib/utils.js";
+	import { slidingIndicator } from "$lib/actions/sliding-indicator";
 
 	let {
 		ref = $bindable(null),
@@ -29,12 +30,13 @@
 	}: TabsPrimitive.ListProps & {
 		variant?: TabsListVariant;
 	} = $props();
+	$effect(()=>{if(ref)return slidingIndicator(ref).destroy;});
 </script>
 
 <TabsPrimitive.List
 	bind:ref
 	data-slot="tabs-list"
 	data-variant={variant}
-	class={cn(tabsListVariants({ variant }), className)}
+	class={cn(tabsListVariants({ variant }), "sliding-tabs", className)}
 	{...restProps}
 />

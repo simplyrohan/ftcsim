@@ -47,15 +47,27 @@ export class MechanismConfiguration {
     let name = type, suffix = 2; while (this.definitions.some(item => item.name === name)) name = `${type}${suffix++}`;
     this.definitions.push({name,type,drivers:{},options:defaults(schema),...(type==='custom'?{visual:{parent:this.definitions.find(item=>item.type==='mecanum')?.name??''}}:{})}); this.save();
   }
-  remove(definition:Mechanism) { this.definitions.splice(this.definitions.indexOf(definition),1); this.save(); }
+  async remove(definition:Mechanism) {
+    const epoch=this.epoch;
+    const allowed=()=>epoch===this.epoch&&!this.busy&&!this.station.robotConfiguration.busy&&this.definitions.includes(definition);
+    if(!allowed())return;
+    const children=this.definitions.filter(item=>item.visual?.parent===definition.name).map(item=>item.name);
+    const details=[...(children.length?[`Attached mechanisms ${children.join(', ')} will need a new origin.`]:[]),'Its drivers remain in the hardware map.','The deletion saves immediately. Update simulation to remove the live mechanism.'];
+    if(!await this.station.confirmation.ask({title:`Delete mechanism “${definition.name}”?`,description:'Remove this mechanism, its settings, and its model assignment from your robot configuration.',action:'Delete mechanism',details,allowed})||!allowed())return;
+    this.definitions.splice(this.definitions.indexOf(definition),1);this.save();
+  }
   restore() {
     if (!this.restorePending || !this.hasSaved || !this.station.physical) return;
     if(this.synchronized){this.restorePending=false;return;}
     if(!this.canApply)return;
-    this.restorePending = false; void this.apply();
+    this.restorePending = false; void this.apply({confirm:false});
   }
-  async apply() {
+  async apply({confirm=true}:{confirm?:boolean}={}) {
     if (!this.canApply) return;
+    const before=canonical(mechanismPhysics(this.definitions)),currentEpoch=this.epoch;
+    const allowed=()=>currentEpoch===this.epoch&&this.canApply&&canonical(mechanismPhysics(this.definitions))===before;
+    if(confirm&&this.station.physical?.mechanisms.length&&!await this.station.confirmation.ask({title:'Update simulation?',description:'Recreate the simulation mechanisms using your saved draft.',action:'Update simulation',details:['Drivetrain poses reset to the world origin.','Driver and encoder states are preserved.'],allowed}))return;
+    if(!allowed())return;
     this.save(); const epoch = this.epoch, definitions = copy(mechanismPhysics(this.definitions)); this.busy = true; const started=performance.now(); this.serverMs=null;
     try {
       const response = await fetch('/sim/mechanisms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mechanisms:definitions}),signal:AbortSignal.timeout(7000)});

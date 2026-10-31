@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { page } from '$app/state';
+  import { goto } from '$app/navigation';
+  import { slidingIndicator } from '$lib/actions/sliding-indicator';
   import { base } from '$app/paths';
   import { fade } from 'svelte/transition';
   import { LayoutDashboard, Cpu, Terminal, Gamepad2, Settings2, ChevronRight, SlidersHorizontal, Menu, ChevronDown } from '@lucide/svelte';
@@ -10,6 +12,7 @@
   import { Station } from '$lib/model/station.svelte';
   import { flatten } from '$lib/model/configuration';
   import Settings from './Settings.svelte';
+  import ConfirmationDialog from './ConfirmationDialog.svelte';
   import DriverCard from './DriverCard.svelte';
   import GamepadCard from './GamepadCard.svelte';
   import GamepadSelector from './GamepadSelector.svelte';
@@ -19,39 +22,43 @@
   const station = new Station();
   const navigation = [{id:'overview',label:'Overview',icon:LayoutDashboard},{id:'devices',label:'Devices',icon:Cpu},{id:'telemetry',label:'Telemetry',icon:Terminal},{id:'gamepads',label:'Gamepads',icon:Gamepad2}];
   const path = $derived(page.url.pathname.slice(base.length).replace(/^\/+|\/+$/g,''));
-  const view = $derived(navigation.some(item=>item.id===path)?path:'overview');
-  const current = $derived(navigation.find(item=>item.id===view)!);
-  let settingsOpen = $state(false), settingsTab = $state('hardware'), mobileNav = $state(false), deviceFilter = $state(''), motionOpen = $state(false);
+  const isSettings = $derived(path==='settings'||path.startsWith('settings/')||path==='hardware'||path==='mechanisms');
+  const settingsTab = $derived(isSettings ? path.split('/')[1]||(['hardware','mechanisms'].includes(path)?path:'hardware') : 'hardware');
+  const view = $derived(isSettings?'settings':navigation.some(item=>item.id===path)?path:'overview');
+  const current = $derived(view==='settings'?{label:'Settings'}:navigation.find(item=>item.id===view)!);
+  let mobileNav = $state(false), deviceFilter = $state(''), motionOpen = $state(false);
   let vx=$state(0),vy=$state(0),yaw=$state(0);
   const devices = $derived(station.physical?.devices ?? []);
   const nestedDeviceCount = $derived(flatten(devices).length-devices.length);
   const filteredDevices = $derived(devices.filter(device=>`${device.name} ${device.type}`.toLowerCase().includes(deviceFilter.toLowerCase())));
-  function openSettings(tab='hardware') { settingsTab=tab;settingsOpen=true;mobileNav=false; }
-  $effect(()=>{if(path==='hardware'||path==='mechanisms'){settingsTab=path;settingsOpen=true;}mobileNav=false;});
-  $effect(()=>{station.gamepads.allowed=!settingsOpen;station.gamepads.reset();});
+  function openSettings(tab='hardware') { void goto(`${base}/settings/${tab}`);mobileNav=false; }
+  $effect(()=>{path;mobileNav=false;untrack(()=>station.confirmation.cancel());});
+  $effect(()=>{station.gamepads.allowed=!isSettings&&!station.confirmation.pending;station.gamepads.reset();});
   onMount(()=>{void station.mount();return()=>station.destroy();});
 </script>
 <svelte:head><title>{current.label} · ftcsim</title><meta name="description" content="Your local FTC Driver Station. Run robot code, inspect devices, and model mechanisms."/></svelte:head>
-<svelte:window onfocus={()=>station.focus(true)} onblur={()=>station.focus(false)} onkeydown={event=>{if((event.metaKey||event.ctrlKey)&&event.key===','){event.preventDefault();settingsOpen=!settingsOpen;}else station.gamepads.key(event,true);}} onkeyup={event=>station.gamepads.key(event,false)} onstorage={event=>{station.hardware.storageChanged(event.key);station.mechanisms.storageChanged(event.key);}}/>
+<svelte:window onfocus={()=>station.focus(true)} onblur={()=>station.focus(false)} onkeydown={event=>{if(station.confirmation.pending)return;if((event.metaKey||event.ctrlKey)&&event.key===','){event.preventDefault();openSettings();}else station.gamepads.key(event,true);}} onkeyup={event=>station.gamepads.key(event,false)} onstorage={event=>{station.hardware.storageChanged(event.key);station.mechanisms.storageChanged(event.key);}}/>
 <svelte:document onvisibilitychange={()=>{if(!document.hidden)station.heartbeat();else station.gamepads.reset();}}/>
 <div class="app-shell">
   <aside class="sidebar" class:mobile-open={mobileNav}>
     <a class="brand" href={`${base}/`} aria-label="ftcsim overview"><svg width="25" height="25" viewBox="0 0 30 30" fill="none" aria-hidden="true"><path d="M5 6h21M5 15h15M5 24h9M5 6v22" stroke="currentColor" stroke-width="2"/></svg><span>ftcsim<span class="brand-dot">.</span></span><span class="brand-tag">DESKTOP</span></a>
     <span class="eyebrow nav-caption">Workspace</span>
-    <nav aria-label="Driver Station navigation">{#each navigation as item}<a href={item.id==='overview'?`${base}/`:`${base}/${item.id}`} aria-current={view===item.id?'page':undefined} onclick={()=>mobileNav=false}><item.icon size={16} strokeWidth={1.5}/><span>{item.label}</span>{#if item.id==='devices'}<span class="nav-count">{devices.length.toString().padStart(2,'0')}</span>{/if}</a>{/each}</nav>
-    <div class="sidebar-bottom"><button class="settings-link" onclick={()=>openSettings()}><Settings2 size={16} strokeWidth={1.5}/><span>Settings</span><kbd>⌘ ,</kbd></button><div class="sidebar-connections" role="status" aria-label="Connection status">
+    <nav class="sliding-nav" use:slidingIndicator aria-label="Driver Station navigation">{#each navigation as item}<a href={item.id==='overview'?`${base}/`:`${base}/${item.id}`} aria-current={view===item.id?'page':undefined} onclick={()=>mobileNav=false}><item.icon size={16} strokeWidth={1.5}/><span>{item.label}</span>{#if item.id==='devices'}<span class="nav-count">{devices.length.toString().padStart(2,'0')}</span>{/if}</a>{/each}</nav>
+    <div class="sidebar-bottom"><a class="settings-link" href={`${base}/settings/hardware`} aria-current={isSettings?'page':undefined} onclick={()=>mobileNav=false}><Settings2 size={16} strokeWidth={1.5}/><span>Settings</span><kbd>⌘ ,</kbd></a><div class="sidebar-connections" role="status" aria-label="Connection status">
       <button class="connection-row" title="Connection status and round-trip latency; open Connection settings for details" onclick={()=>openSettings('connection')}><span class="status-dot" class:offline={!station.simulatorConnected}></span><span>Simulator server</span><span class="connection-value">{station.simulatorConnected?station.diagnostics.simulator.ms===null?'Connected':milliseconds(station.diagnostics.simulator.ms):'Offline'}</span></button>
       <button class="connection-row" title="Connection status and round-trip latency; open Connection settings for details" onclick={()=>openSettings('connection')}><span class="status-dot" class:offline={!station.connected} class:connecting={station.connecting}></span><span>SDK</span><span class="connection-value">{station.connecting?'Connecting…':station.connected?station.diagnostics.sdk.ms===null?'Connected':milliseconds(station.diagnostics.sdk.ms):'Offline'}</span></button>
     </div></div>
   </aside>
   {#if mobileNav}<button class="mobile-scrim" aria-label="Close navigation" onclick={()=>mobileNav=false}></button>{/if}
   <div class="workspace" class:viewer-workspace={view==='overview'}>
-    <header class="topbar"><div class="breadcrumb"><Button variant="ghost" size="icon" class="mobile-menu" aria-label="Toggle navigation" onclick={()=>mobileNav=!mobileNav}><Menu size={17}/></Button><span>Workspace</span><ChevronRight size={12}/><strong>{current.label}</strong></div><div class="topbar-right"><button class="topbar-settings" aria-label="Open settings" onclick={()=>openSettings('connection')}><SlidersHorizontal size={15}/></button></div></header>
+    <header class="topbar"><div class="breadcrumb"><Button variant="ghost" size="icon" class="mobile-menu" aria-label="Toggle navigation" onclick={()=>mobileNav=!mobileNav}><Menu size={17}/></Button><span>Workspace</span><ChevronRight size={12}/><strong>{current.label}</strong></div></header>
     {#if view==='overview'}
-      <Overview {station} rendering={!settingsOpen} onsettings={openSettings}/>
+      <Overview {station} onsettings={openSettings}/>
+    {:else if view==='settings'}
+      <main class="settings-page"><Settings {station} tab={settingsTab}/></main>
     {:else}
     <main>
-      <div class="page-heading"><div><div class="eyebrow">Driver station</div><h1>{current.label}</h1><p>{view==='devices'?'Inspect every driver and its live physical state.':view==='telemetry'?'A direct line to your running robot code.':'Physical, virtual, and keyboard controls.'}</p></div><Button variant="outline" class="configure-button" onclick={()=>openSettings(view==='devices'?'hardware':'mechanisms')}><Settings2 size={14}/>Configure<ChevronRight size={12}/></Button></div>
+      <div class="page-heading"><div><div class="eyebrow">Driver station</div><h1>{current.label}</h1><p>{view==='devices'?'Inspect every driver and its live physical state.':view==='telemetry'?'A direct line to your running robot code.':'Physical, virtual, and keyboard controls.'}</p></div></div>
       <ControllerPanel {station} onHardware={()=>openSettings('hardware')}/>
       {#key view}<div class="view-content" in:fade={{duration:160}}>
         {#if view==='devices'}
@@ -65,4 +72,5 @@
     {/if}
   </div>
 </div>
-<Settings {station} bind:open={settingsOpen} bind:tab={settingsTab}/>
+
+<ConfirmationDialog confirmation={station.confirmation}/>

@@ -56,7 +56,16 @@ export class HardwareConfiguration {
     for (const port of schema.child_ports) { const child = this.catalog.find(item => item.connection === schema.child_connections[port]); if (child) this.add(child.type,device,port); }
     this.save(); return device;
   }
-  remove(device:Device,parent?:Device) { const list = parent?.children ?? this.devices; list.splice(list.indexOf(device),1); this.save(); }
+  async remove(device:Device,parent?:Device) {
+    const epoch=this.epoch,list=parent?.children??this.devices;
+    const allowed=()=>epoch===this.epoch&&!this.busy&&!this.importing&&!this.station.robotConfiguration.busy&&list.includes(device);
+    if(!allowed())return;
+    const removed=flatten([device]),names=new Set([...removed.map(item=>item.name),...(parent?[parent.name]:[])]);
+    const affected=this.station.mechanisms.definitions.filter(item=>Object.values(item.drivers).some(name=>names.has(name))).map(item=>item.name);
+    const details=[...(removed.length>1?[`Also deletes connected encoders: ${removed.slice(1).map(item=>item.name).join(', ')}.`]:[]),...(affected.length?[`Used by ${affected.join(', ')}. Review these mechanisms’ driver connections afterward.`]:[]),'The deletion saves immediately. Apply the hardware map to update the SDK.'];
+    if(!await this.station.confirmation.ask({title:`Delete driver “${device.name}”?`,description:'Remove this driver from your robot configuration.',action:'Delete driver',details,allowed})||!allowed())return;
+    list.splice(list.indexOf(device),1);this.save();
+  }
   async importText(text:string,label='JSON') {
     if (new TextEncoder().encode(text).length > MAX_HARDWARE_MAP_BYTES) throw Error('Files must be at most 1 MiB.');
     const record = decodeHardwareMap(text);
@@ -81,10 +90,14 @@ export class HardwareConfiguration {
   restore() {
     if (!this.restorePending || !this.loaded || !this.station.helloReceived || !this.station.canConfigure) return;
     this.restorePending = false;
-    if (this.hasSaved && !this.sdkSynchronized && !this.error) void this.apply();
+    if (this.hasSaved && !this.sdkSynchronized && !this.error) void this.apply({confirm:false});
   }
-  async apply() {
+  async apply({confirm=true}:{confirm?:boolean}={}) {
     if (!this.canApply) return;
+    const before=canonical(this.devices),currentEpoch=this.epoch;
+    const allowed=()=>currentEpoch===this.epoch&&this.canApply&&canonical(this.devices)===before;
+    if(confirm&&this.configured&&!await this.station.confirmation.ask({title:'Replace SDK hardware?',description:'Apply this hardware map and recreate the SDK’s drivers.',action:'Apply hardware map',details:['Current driver state, including encoder readings and Pinpoint position, will reset.','Your saved configuration and mechanism model files are kept.'],allowed}))return;
+    if(!allowed())return;
     this.save(); const epoch = this.epoch, devices = copy(this.devices); this.busy = true;
     try {
       await this.station.request({type:'configure',devices});

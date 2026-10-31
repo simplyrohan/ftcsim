@@ -1,0 +1,84 @@
+/* Nested pills use outer radius = inner radius + padding + border.
+   Their intrinsic height comes from the button and inset, never extra min-height. */
+:is(.sliding-tabs,.sliding-toggle) {
+  --tab-inset:4px;
+  --tab-border:0px;
+  --tab-height:36px;
+  --tab-radius:calc(var(--tab-height) / 2);
+  --tab-outer-radius:calc(var(--tab-radius) + var(--tab-inset) + var(--tab-border));
+}
+/* One sliding highlight follows selection, including unequal labels and resized layouts. */
+:is(.sliding-tabs,.sliding-toggle,.sliding-nav) { position:relative; isolation:isolate; }
+/* Segments remain centered while pressed; only the shared highlight moves. */
+:is(.sliding-tabs,.sliding-toggle) > button { translate:none; }
+:is(.sliding-tabs,.sliding-toggle,.sliding-nav)::before {
+  content:'';
+  position:absolute;
+  pointer-events:none;
+  z-index:-1;
+  left:0;top:0;
+  width:var(--indicator-width,0px);
+  height:var(--indicator-height,0px);
+  transform:translate(var(--indicator-x,0px),var(--indicator-y,0px));
+  border-radius:var(--tab-radius,var(--radius-navigation));
+  background:var(--accent-soft);
+  opacity:0;
+}
+:is(.sliding-tabs,.sliding-toggle,.sliding-nav)[data-indicator-visible=true]::before { opacity:1; }
+:is(.sliding-tabs,.sliding-toggle,.sliding-nav)[data-indicator-ready=true]::before {
+  transition:transform .3s var(--bounce-transition),width .3s var(--bounce-transition),height .3s var(--bounce-transition),opacity .15s ease;
+}
+.sidebar nav.sliding-nav { gap:var(--space-1); }
+.sidebar nav.sliding-nav a { border-color:transparent; border-radius:var(--radius-navigation); color:var(--secondary); padding:var(--space-2) var(--space-3); }
+.sidebar nav.sliding-nav a[aria-current=page] { color:var(--white); border-color:transparent; }
+.sidebar nav.sliding-nav a::before { display:none; }
+.sidebar a.settings-link { border-color:transparent; border-radius:var(--radius-navigation); padding:var(--space-2) var(--space-3); }
+.sidebar a.settings-link[aria-current=page] { background:var(--accent-soft); color:var(--white); border-color:transparent; }
+[data-slot=tabs-list].sliding-tabs { gap:var(--space-1); height:auto; min-height:0; padding:var(--tab-inset); border:0; border-radius:var(--tab-outer-radius); width:fit-content; max-width:100%; align-items:center; background:transparent; overflow-x:auto; scrollbar-width:none; }
+[data-slot=tabs-list].sliding-tabs [data-slot=tabs-trigger] { flex:none; min-height:0; height:var(--tab-height); margin:0; border:0; border-radius:var(--tab-radius); padding:0 var(--space-3); gap:var(--space-2); font-size:12px; font-weight:400; color:var(--secondary); background:transparent!important; box-shadow:none!important; }
+[data-slot=tabs-list].sliding-tabs [data-slot=tabs-trigger][data-state=active] { color:var(--white); }
+[data-slot=tabs-list].sliding-tabs [data-slot=tabs-trigger]::after { display:none; }
+[data-slot=tabs-list].mechanism-editor-tabs.sliding-tabs [data-slot=tabs-trigger] { padding-inline:var(--space-3); font-size:11px; }
+[data-slot=tabs-list].sliding-tabs [data-slot=tabs-trigger]:focus-visible { outline:1px solid var(--accent); outline-offset:-2px; }
+.settings-layout>.settings-nav.sliding-tabs { margin-bottom:0; }
+.gamepad-selector.sliding-toggle {
+  --tab-height:32px;
+  --tab-border:var(--hairline-width);
+  display:inline-grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:center;
+  width:fit-content;
+  height:auto;
+  min-height:0;
+  padding:var(--tab-inset);
+  gap:var(--space-1);
+  border:var(--tab-border) solid var(--hairline);
+  border-radius:var(--tab-outer-radius);
+}
+.gamepad-selector.sliding-toggle button {
+  width:auto;
+  height:var(--tab-height);
+  min-height:0;
+  margin:0;
+  padding:0 var(--space-3);
+  border:0!important;
+  border-radius:var(--tab-radius);
+  font-size:11px;
+  line-height:1;
+  color:var(--secondary)!important;
+}
+.gamepad-selector.sliding-toggle button[aria-pressed=true] { color:var(--white)!important; background:transparent; }
+.gamepad-selector.sliding-toggle.compact { --tab-height:24px; padding:var(--tab-inset); min-height:0; }
+.gamepad-selector.sliding-toggle.compact button { width:var(--tab-height); height:var(--tab-height); min-height:0; padding:0!important; font-size:10px; }
+.scene-view-switch { --tab-height:var(--control-height-sm); --tab-inset:0px; display:flex; align-items:center; gap:var(--space-1); border-radius:var(--tab-outer-radius); }
+.scene-view-switch.sliding-toggle button[data-slot=button] { border-color:transparent; border-radius:var(--radius-navigation); color:var(--secondary); }
+.scene-view-switch.sliding-toggle button[data-slot=button][aria-pressed=true] { border-color:transparent; color:var(--white); }
+.scene-camera-controls button[aria-label='Follow robot'][aria-pressed=true],.scene-instrument-switch button[aria-pressed=true] { background:var(--accent-soft); border-color:transparent; border-radius:var(--radius-navigation); color:var(--white); }
+@media(max-width:640px) {
+  [data-slot=tabs-list].sliding-tabs { width:100%; }
+  [data-slot=tabs-list].sliding-tabs [data-slot=tabs-trigger] { padding-inline:var(--space-2); font-size:11px; }
+  [data-slot=tabs-list].mechanism-editor-tabs.sliding-tabs [data-slot=tabs-trigger] { font-size:10px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  :is(.sliding-tabs,.sliding-toggle,.sliding-nav)::before { transition:none!important; }
+}

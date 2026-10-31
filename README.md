@@ -34,8 +34,9 @@ Press **Ctrl+C** once to stop the server. Outputs stop immediately, and SDK and
 Driver Station sockets close together with a bounded grace period, including
 clients that have stopped responding. The port is released for the next run.
 
-Hardware maps belong to the Driver Station browser. **Settings → Hardware map**
-provides driver selection, names, hub/port assignments,
+Hardware maps belong to the Driver Station browser. Open the **Settings** page
+from the sidebar, then **Hardware map**. Compact driver rows expand with **Edit**
+for names, hub/port assignments,
 device settings, and nested Pinpoint pod configuration. **Save robot** exports an `.fs` ZIP archive containing `robot.json` and GLB
 files under `models/`. **Load robot** and drag-and-drop restore hardware,
 mechanisms, models, and origin links together. Existing JSON robot files and

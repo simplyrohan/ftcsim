@@ -1,18 +1,22 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Box, ScanLine, Crosshair, RotateCcw } from '@lucide/svelte';
+  import { slidingIndicator } from '$lib/actions/sliding-indicator';
+  import { Box, ScanLine, Crosshair, RotateCcw, Map } from '@lucide/svelte';
   import { Button } from '$lib/components/ui/button';
   import type { Diagnostics } from '$lib/model/diagnostics.svelte';
   import type { Mechanism, MechanismState } from '$lib/model/types';
   import type { DrivebaseViewport, CameraView } from '$lib/scene/viewport';
-  let { mechanisms, definitions, selected, showOrigins=false, active=true, preview=false, diagnostics, label='Overview' }: {active?:boolean;preview?:boolean;diagnostics?:Diagnostics;label?:string;showOrigins?:boolean;mechanisms:MechanismState[];definitions:Mechanism[];selected:string} = $props();
+  let { mechanisms, definitions, selected, showOrigins=false, active=true, preview=false, fieldControl=false, diagnostics, label='Overview' }: {fieldControl?:boolean;active?:boolean;preview?:boolean;diagnostics?:Diagnostics;label?:string;showOrigins?:boolean;mechanisms:MechanismState[];definitions:Mechanism[];selected:string} = $props();
   let canvas:HTMLCanvasElement;
   let viewport=$state.raw<DrivebaseViewport|null>(null);
   let view=$state<CameraView>('perspective'), follow=$state(true), error=$state(''), ready=$state(false);
+  let field=$state(true),fieldStatus=$state('');
   $effect(()=>{if(active)viewport?.sync(mechanisms,definitions,selected);});
   $effect(()=>viewport?.setActive(active));
   $effect(()=>viewport?.setFollow(follow));
   $effect(()=>viewport?.setView(view));
+  $effect(()=>{if(fieldControl)void viewport?.setField(field);});
+  function toggleField(){field=!field;try{localStorage.setItem('ftcsim.fieldVisible',String(field));}catch{/* View remains usable without storage. */}}
   let mounted=$state(false),attempted=$state(false);
   let cancelled=false;
   let metrics:ReturnType<Diagnostics['registerView']>|undefined;
@@ -24,10 +28,10 @@
       if(cancelled)return;
       if(!active){attempted=false;return;}
       metrics=diagnostics?.registerView(label);
-      viewport=new DrivebaseViewport(canvas,message=>error=message,showOrigins,{preview,onMetrics:metrics?.report});ready=true;
+      viewport=new DrivebaseViewport(canvas,message=>error=message,showOrigins,{preview,onMetrics:metrics?.report,onFieldStatus:message=>fieldStatus=message});ready=true;
     } catch {if(!cancelled)error='3D rendering is unavailable in this browser. Robot controls are still available.';}
   }
-  onMount(()=>{mounted=true;return()=>{cancelled=true;viewport?.dispose();viewport=null;metrics?.dispose();};});
+  onMount(()=>{try{field=localStorage.getItem('ftcsim.fieldVisible')!=='false';}catch{/* Use the default. */}mounted=true;return()=>{cancelled=true;viewport?.dispose();viewport=null;metrics?.dispose();};});
 
 </script>
 
@@ -35,11 +39,15 @@
   <canvas bind:this={canvas} aria-label="Live 3D robot simulation. Drag to orbit, scroll to zoom, right-drag to pan." tabindex="0"></canvas>
   {#if error}<p class="scene-render-message" role="status">{error}</p>{:else if !ready}<p class="scene-render-message">Preparing 3D view…</p>{/if}
   <div class="scene-camera-controls" role="group" aria-label="3D camera controls">
+    <div class="scene-view-switch sliding-toggle" use:slidingIndicator role="group" aria-label="Camera view">
     <Button variant="outline" size="sm" aria-label="Perspective view" title="Perspective view" aria-pressed={view==='perspective'} disabled={!ready} onclick={()=>view='perspective'}><Box size={14}/><span class="scene-toolbar-label">Perspective</span></Button>
     <Button variant="outline" size="sm" aria-label="Top view" title="Top view" aria-pressed={view==='top'} disabled={!ready} onclick={()=>view='top'}><ScanLine size={14}/><span class="scene-toolbar-label">Top</span></Button>
+    </div>
     <span class="scene-toolbar-divider"></span>
+    {#if fieldControl}<Button variant="outline" size="sm" aria-label="Show field" title="Show field" aria-pressed={field} disabled={!ready} onclick={toggleField}><Map size={14}/><span class="scene-toolbar-label">Field</span></Button>{/if}
     <Button variant="outline" size="sm" aria-label="Follow robot" title="Follow robot" aria-pressed={follow} disabled={!ready} onclick={()=>follow=!follow}><Crosshair size={14}/><span class="scene-toolbar-label">Follow</span></Button>
     <Button variant="outline" size="sm" aria-label="Recenter camera" title="Recenter camera" disabled={!ready} onclick={()=>viewport?.recenter()}><RotateCcw size={14}/></Button>
   </div>
   <p class="scene-camera-hint">Drag to orbit <span>·</span> Scroll to zoom <span>·</span> Right-drag to pan</p>
+  {#if fieldControl && fieldStatus}<p class="scene-field-status" role="status">{fieldStatus}</p>{/if}
 </div>

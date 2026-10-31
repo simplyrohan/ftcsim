@@ -23,4 +23,4 @@ namespaces = false
 version = {attr = "ftcsim.__version__"}
 
 [tool.setuptools.package-data]
-ftcsim = ["web/*", "web/licenses/*", "web/_app/*", "web/_app/immutable/*/*", "templates/*.txt", "sdk/libs/*.jar", "sdk/*.json", "sdk/LICENSE"]
+ftcsim = ["web/*", "web/licenses/*", "web/models/*", "web/draco/*", "web/_app/*", "web/_app/immutable/*/*", "templates/*.txt", "sdk/libs/*.jar", "sdk/*.json", "sdk/LICENSE"]

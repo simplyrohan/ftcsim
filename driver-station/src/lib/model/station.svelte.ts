@@ -1,8 +1,10 @@
+import { Confirmation } from './confirmation.svelte';
 import { Diagnostics } from './diagnostics.svelte';
 import { RobotConfigurationFile } from './robot-configuration.svelte';
 import { HardwareConfiguration } from './hardware.svelte';
 import { MechanismConfiguration } from './mechanisms.svelte';
 import { Gamepads } from './gamepads.svelte';
+import { StartPositions } from './start-positions.svelte';
 import type { LogEntry, OpMode, PhysicalState } from './types';
 import { copy } from './configuration';
 
@@ -24,22 +26,25 @@ export class Station {
   telemetryFormat = $state('MONOSPACE');
   events = $state<LogEntry[]>([]);
   diagnostics = new Diagnostics();
+  confirmation = new Confirmation();
   helloReceived = false;
   hardware = new HardwareConfiguration(this);
   mechanisms = new MechanismConfiguration(this);
   robotConfiguration = new RobotConfigurationFile(this);
   gamepads = new Gamepads();
+  startPositions = new StartPositions(this);
   private sdk:WebSocket|null = null;
   private simulator:WebSocket|null = null;
   private requests = new Map<number,{resolve:(data:any)=>void; reject:(error:Error)=>void; timer:ReturnType<typeof setTimeout>}>();
   private sequence = 0;
+  private commandEpoch = 0;
   private eventId = 0;
   private destroyed = false;
   private reconnectTimer?:ReturnType<typeof setTimeout>;
   private intervals:ReturnType<typeof setInterval>[] = [];
   get active() { return ['initialized','running'].includes(this.status); }
   get canConfigure() { return this.connected && this.controller && !['connecting','disconnected','initialized','running'].includes(this.status); }
-  get canInit() { return this.connected && this.controller && !this.active && this.hardware.ready && !this.pendingCommand; }
+  get canInit() { return this.connected && this.controller && !this.active && this.hardware.ready && !this.pendingCommand && !this.startPositions.busy; }
   get canStart() { return this.connected && this.controller && this.status === 'initialized' && !this.pendingCommand; }
   get initReason() { return !this.connected ? 'Connect the Robot Controller to continue.' : !this.controller ? 'This tab is observing. Reconnect after the controller tab closes.' : this.active ? 'Stop this OpMode before initializing again.' : this.hardware.busy ? 'Applying the hardware map…' : !this.hardware.ready ? this.hardware.error || 'Apply your hardware map in Settings before INIT.' : this.pendingCommand ? 'Waiting for the Robot Controller…' : 'Ready to initialize.'; }
   log(message:string,level:'info'|'error'='info') { this.events = [...this.events.slice(-199),{id:++this.eventId,time:new Date().toLocaleTimeString('en-US',{hour12:false}),message,level}]; }
@@ -69,7 +74,7 @@ export class Station {
     try { const url = new URL(this.endpoint); if (!['ws:','wss:'].includes(url.protocol)) throw Error('Use a ws:// or wss:// address.'); endpoint = url.href; }
     catch(error) { this.notice = String(error); return; }
     this.disconnect(); this.endpoint = endpoint; this.connecting = true; this.status = 'connecting'; this.error = ''; this.notice = ''; this.telemetry = {}; this.helloReceived = false;
-    this.hardware.load(endpoint); this.mechanisms.load(endpoint);
+    this.hardware.load(endpoint); this.mechanisms.load(endpoint); this.startPositions.load(endpoint);
     try { localStorage.setItem('ftcsim.sdkEndpoint',endpoint); } catch { /* Drafts still work in this tab. */ }
     const address = import.meta.env.DEV && endpoint === __SDK_PROXY_TARGET__ ? `${location.protocol === 'https:'?'wss:':'ws:'}//${location.host}/sdk` : endpoint;
     const socket = this.sdk = new WebSocket(address);
@@ -111,11 +116,18 @@ export class Station {
   }
   async command(type:'init'|'start'|'stop') {
     if (!this.controller || !this.connected || this.pendingCommand && type !== 'stop' || type === 'init' && !this.canInit || type === 'start' && !this.canStart) return;
+    const epoch=++this.commandEpoch;
     this.pendingCommand = type; this.notice = '';
     if (type === 'stop' || type === 'init') this.gamepads.reset();
-    try { this.heartbeat(); await this.request({type}); this.notice = type === 'stop' ? 'Stopped. Press INIT to run again.' : `${type === 'init'?'INIT':'START'} accepted.`; }
-    catch(error) { this.notice = error instanceof Error ? error.message : String(error); this.log(this.notice,'error'); }
-    finally { this.pendingCommand = ''; }
+    try {
+      this.heartbeat();
+      if(type==='init'&&this.startPositions.current.enabled)await this.startPositions.place();
+      if(epoch!==this.commandEpoch)return;
+      await this.request({type});
+      if(epoch===this.commandEpoch)this.notice = type === 'stop' ? 'Stopped. Press INIT to run again.' : `${type === 'init'?'INIT':'START'} accepted.`;
+    }
+    catch(error) { if(epoch===this.commandEpoch){this.notice = error instanceof Error ? error.message : String(error); this.log(this.notice,'error');} }
+    finally { if(epoch===this.commandEpoch)this.pendingCommand = ''; }
   }
   async select(name:string) { try { await this.request({type:'select',name}); } catch(error) { this.notice = String(error); } }
   heartbeat() { if (this.controller && this.connected) this.send({type:'heartbeat'}); }
@@ -151,6 +163,6 @@ export class Station {
     while (!predicate()) { if (this.destroyed || !this.connected) throw Error('Controller disconnected.'); if (Date.now()-start>timeout) throw Error('Simulator did not create the matching devices. Check its SDK connection.'); await new Promise(resolve=>setTimeout(resolve,50)); }
   }
   private failRequests() { for (const item of this.requests.values()) { clearTimeout(item.timer); item.reject(Error('Controller connection closed.')); } this.requests.clear(); }
-  private disconnect() { this.diagnostics.sdk.reset(); const socket = this.sdk; this.sdk = null; socket?.close(); this.connected = this.controller = false; this.pendingCommand = ''; this.gamepads.reset(); this.failRequests(); }
-  destroy() { this.diagnostics.destroy(); this.destroyed = true; this.disconnect(); clearTimeout(this.reconnectTimer); this.intervals.forEach(clearInterval); const socket = this.simulator; this.simulator = null; this.simulatorConnected = false; socket?.close(); }
+  private disconnect() { this.commandEpoch++; this.diagnostics.sdk.reset(); const socket = this.sdk; this.sdk = null; socket?.close(); this.connected = this.controller = false; this.pendingCommand = ''; this.gamepads.reset(); this.failRequests(); }
+  destroy() { this.confirmation.cancel(); this.diagnostics.destroy(); this.destroyed = true; this.disconnect(); clearTimeout(this.reconnectTimer); this.intervals.forEach(clearInterval); const socket = this.simulator; this.simulator = null; this.simulatorConnected = false; socket?.close(); }
 }

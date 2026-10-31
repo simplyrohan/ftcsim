@@ -1,0 +1,78 @@
+/* Shared design tokens. Fonts ship with the app, so styling also works offline. */
+:root {
+  --white:#fff;
+  --white-pressed:#e8e8e8;
+  --bg-1:hsl(220 2% 5%);
+  --bg-2:hsl(220 3% 10%);
+  --bg-3:hsl(220 4% 13%);
+  --bg-4:hsl(220 5% 16%);
+  --hairline:hsl(195 5% 25% / .8);
+  --hairline-width:.75px;
+  --secondary:hsl(195 5% 80%);
+  --text-muted:hsl(220 4% 64%);
+  --text-dim:hsl(220 4% 55%);
+  --text-faint:hsl(220 4% 46%);
+  --blue:hsl(202 100% 67%);
+  --blue-soft:hsl(202 100% 67% / .25);
+  --red:hsl(0 100% 69%);
+  --red-soft:hsl(0 100% 69% / .15);
+  --green:hsl(151 59% 59%);
+  --green-soft:hsl(151 59% 59% / .25);
+  --yellow:hsl(43 100% 60%);
+  --yellow-soft:hsl(43 100% 60% / .25);
+  --accent:var(--blue);
+  --accent-soft:var(--blue-soft);
+  --background:var(--bg-1);
+  --foreground:var(--white);
+  --muted-foreground:var(--text-muted);
+  --border:var(--hairline);
+  --ring:var(--accent);
+  --overlay-background:hsl(220 2% 5% / .88);
+  --radius-none:0;
+  --radius-card:0;
+  --radius-control:0;
+  --radius-button:var(--radius-full);
+  --radius-navigation:var(--radius-full);
+  --radius-xs-value:0;
+  --radius-sm-value:0;
+  --radius-md-value:0;
+  --radius-lg-value:0;
+  --radius-xl-value:0;
+  --radius-full:9999px;
+  --radius:var(--radius-md-value);
+  --spacing:4px;
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:16px;
+  --space-5:20px;
+  --space-6:24px;
+  --space-8:32px;
+  --widget-padding:var(--space-3);
+  --editor-padding:var(--space-3);
+  --widget-gap:var(--space-2);
+  --page-gutter:var(--space-6);
+  --compact-padding:var(--space-2);
+  --toolbar-padding:var(--space-2);
+  --overlay-gutter:var(--space-4);
+  --section-gap:var(--space-4);
+  --control-height:36px;
+  --control-height-sm:28px;
+  /* The supplied tab-slider curve, played over 300 ms in navigation.css. */
+  --bounce-transition:linear(
+    0,
+    0.341 7.8%,
+    0.609 16.1%,
+    0.807 25%,
+    0.882 29.8%,
+    0.941 34.8%,
+    1.007 44%,
+    1.035 54.6%,
+    1.035 63.2%,
+    1.006 86.3%,
+    1
+  );
+}
+
+@media(max-width:1120px) { :root { --page-gutter:var(--space-4); } }
+@media(max-width:640px) { :root { --page-gutter:var(--space-3); --overlay-gutter:var(--space-3); } }
