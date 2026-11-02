@@ -7,7 +7,7 @@ export const optionValue = (options:Record<string,any>|undefined, option:Option)
 export const choiceValue = (choice:any) => typeof choice === 'object' ? choice.value : choice;
 export const choiceLabel = (choice:any) => typeof choice === 'object' ? choice.label : String(choice);
 export const topology = (devices:(Device|DeviceState)[]):string => canonical(devices.map(({name,type,module,port,children=[]}) => canonical({name,type,module,port,children:topology(children)})).sort());
-export function optionError(options:Record<string,any> = {}, schema:Option[]):string {
+function optionError(options:Record<string,any> = {}, schema:Option[]):string {
   if (Object.keys(options).some(key => !schema.some(option => option.name === key))) return 'Unknown configuration option.';
   for (const option of schema) {
     const value = option.name in options ? options[option.name] : option.default;
@@ -80,7 +80,7 @@ export function mechanismError(definitions:Mechanism[], catalog:MechanismType[],
   return '';
 }
 
-export function mechanismVisualError(definition:Mechanism, definitions:Mechanism[]):string {
+function mechanismVisualError(definition:Mechanism, definitions:Mechanism[]):string {
   const visual=definition.visual;
   if (visual===undefined) return '';
   if (!visual || typeof visual!=='object' || Array.isArray(visual) || Object.keys(visual).some(key=>!['model','position','rotation','scale','parent'].includes(key))) return `${definition.name}: invalid visual settings.`;

@@ -44,7 +44,7 @@ class DriverRegistry:
         parameters = inspect.signature(cls.__init__).parameters
         if not isinstance(options, dict) or options.keys() - (parameters.keys() - {'self', 'name', 'port'}):
             raise ValueError(f'Unknown options for {kind}')
-        options = dict(parent.child_defaults.get(port, {}), **options) if parent else options
+        options = {**parent.child_defaults.get(port, {}), **options} if parent else options
         children = definition.get('children', [])
         if not isinstance(children, list) or len(children) > len(cls.child_ports):
             raise ValueError(f'Invalid children for {kind}')
@@ -66,15 +66,15 @@ class DriverRegistry:
                 if default is inspect.Parameter.empty:
                     raise ValueError(f'{kind}: configurable options need defaults')
                 metadata = getattr(cls, 'option_metadata', {}).get(name, {})
-                option = dict(name=name, type='number' if isinstance(default, (int, float)) else 'text',
-                              default=default, label=name.replace('_', ' ').title())
+                option = {'name': name, 'type': 'number' if isinstance(default, (int, float)) else 'text',
+                          'default': default, 'label': name.replace('_', ' ').title()}
                 option.update(metadata)
                 options.append(option)
-            catalog.append(dict(type=kind, label=getattr(cls, 'display_name', kind),
-                                connection=cls.connection, ports=6 if cls.connection == 'servo' else 4,
-                                child_ports=cls.child_ports, child_connections=cls.child_connections,
-                                child_defaults=cls.child_defaults, options=options,
-                                presets=getattr(cls, 'presets', ())))
+            catalog.append({'type': kind, 'label': getattr(cls, 'display_name', kind),
+                            'connection': cls.connection, 'ports': 6 if cls.connection == 'servo' else 4,
+                            'child_ports': cls.child_ports, 'child_connections': cls.child_connections,
+                            'child_defaults': cls.child_defaults, 'options': options,
+                            'presets': getattr(cls, 'presets', ())})
         return catalog
 
 

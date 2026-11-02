@@ -17,8 +17,7 @@ export async function loadField() {
     source.traverse(node=>{if(node.name.includes('Soft_Tiles')||node.name.includes('Soft Tiles'))mat.union(new THREE.Box3().setFromObject(node));});
     if(mat.isEmpty())throw Error('The field model has no mat surface.');
     field.position.y=-mat.max.y;
-    // Bake the static CAD assembly into material batches, avoiding hundreds of
-    // fastener draw calls while preserving its transparent walls.
+    // Batch static geometry by material to reduce draw calls.
     const batches=new Map<THREE.Material,THREE.BufferGeometry[]>();
     source.traverse(node=>{
       if(!(node instanceof THREE.Mesh)||Array.isArray(node.material))return;

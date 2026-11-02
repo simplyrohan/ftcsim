@@ -64,15 +64,15 @@ class MechanismRegistry:
                     continue
                 if parameter.default is inspect.Parameter.empty:
                     raise ValueError(f'{kind}: configurable options need defaults')
-                option = dict(name=name, label=name.replace('_', ' ').title(), default=parameter.default,
-                              type='number' if isinstance(parameter.default, (int, float)) else 'text')
+                option = {'name': name, 'label': name.replace('_', ' ').title(), 'default': parameter.default,
+                          'type': 'number' if isinstance(parameter.default, (int, float)) else 'text'}
                 option.update(cls.option_metadata.get(name, {}))
                 options.append(option)
-            slots = [dict(name=name, label=spec['label'], types=[driver.kind for driver in (spec['driver'] if isinstance(spec['driver'], tuple) else (spec['driver'],))], required=spec['required'],
-                          children=spec.get('children', {}))
+            slots = [{'name': name, 'label': spec['label'], 'types': [driver.kind for driver in (spec['driver'] if isinstance(spec['driver'], tuple) else (spec['driver'],))], 'required': spec['required'],
+                      'children': spec.get('children', {})}
                      for name, spec in cls.driver_slots.items()]
-            result.append(dict(type=kind, label=cls.display_name, description=getattr(cls, 'description', ''),
-                               drivers=slots, options=options, exclusive=getattr(cls, 'exclusive', True)))
+            result.append({'type': kind, 'label': cls.display_name, 'description': getattr(cls, 'description', ''),
+                           'drivers': slots, 'options': options, 'exclusive': getattr(cls, 'exclusive', True)})
         return result
 
 

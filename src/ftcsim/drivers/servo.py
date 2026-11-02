@@ -51,6 +51,6 @@ class Servo(Driver):
         self.registers['ServoEnable'] = b'\x00'
 
     def state(self):
-        return dict(enabled=self.enabled, position=self.position,
-                    pulse_us=struct.unpack('<H', self.register('ServoPulseWidth'))[0],
-                    period_us=struct.unpack('<H', self.register('ServoConfiguration'))[0])
+        return {'enabled': self.enabled, 'position': self.position,
+                'pulse_us': struct.unpack('<H', self.register('ServoPulseWidth'))[0],
+                'period_us': struct.unpack('<H', self.register('ServoConfiguration'))[0]}

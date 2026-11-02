@@ -14,8 +14,7 @@ class HubState:
     def dispatch(self, request):
         name = request['command'].rsplit('.', 1)[-1]
         data = bytes.fromhex(request['payload'])
-        # Set/get pairs preserve the actual wire bytes. Defaults match the
-        # documented response widths; device-specific commands live in drivers.
+        # Preserve wire bytes and response widths for register pairs.
         pairs = {
             'PWMConfiguration': (2, struct.pack('<H', 20000)),
             'PWMPulseWidth': (2, b'\x00\x00'),

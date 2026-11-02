@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Central HTTP/WebSocket server. Run independently of the desktop SDK."""
+"""Simulator HTTP and WebSocket endpoints."""
 import asyncio
 from time import perf_counter
 from contextlib import suppress
@@ -38,7 +38,7 @@ async def simulator(request):
     if request.app[PEER].socket is not None:
         raise web.HTTPConflict(text='One SDK connection is already active')
     ws = web.WebSocketResponse(heartbeat=1, max_msg_size=1024 * 1024)
-    # Claim ownership before yielding so two simultaneous upgrades cannot race.
+    # Claim ownership before the upgrade can yield.
     request.app[PEER].socket = ws
     connections.sockets[ws] = request.transport
     robot = request.app[ROBOT]
@@ -56,7 +56,7 @@ async def simulator(request):
                         raise ValueError('Expected object')
                     reply = robot.exchange(data)
                 except (ValueError, TypeError) as error:
-                    reply = dict(type='lynx', status='error', message=str(error))
+                    reply = {'type': 'lynx', 'status': 'error', 'message': str(error)}
                 await ws.send_json(reply)
             elif message.type == WSMsgType.ERROR:
                 break
@@ -73,7 +73,6 @@ async def state(request):
 
 
 async def drivers(request):
-    """Live physical state, separate from the SDK-owned control connection."""
     connections = request.app[CONNECTIONS]
     if connections.stopping:
         raise web.HTTPServiceUnavailable(text='Simulator is stopping')
@@ -92,7 +91,7 @@ async def drivers(request):
     task = None
     try:
         await ws.prepare(request)
-        await ws.send_json(dict(type='drivers', drivers=DRIVERS.catalog()))
+        await ws.send_json({'type': 'drivers', 'drivers': DRIVERS.catalog()})
         task = asyncio.create_task(publish())
         async for message in ws:
             if connections.stopping:
@@ -103,7 +102,7 @@ async def drivers(request):
                     if isinstance(data, dict) and data.get('type') == 'ping':
                         if set(data) != {'type', 'id'} or type(data['id']) is not int:
                             raise ValueError('Invalid ping')
-                        await ws.send_json(dict(type='pong', id=data['id']))
+                        await ws.send_json({'type': 'pong', 'id': data['id']})
                         continue
                     if not isinstance(data, dict) or data.get('type') != 'motion':
                         raise ValueError('Expected motion input')
@@ -112,9 +111,9 @@ async def drivers(request):
                     if not robot.connected:
                         raise ValueError('Connect the SDK before applying sensor motion')
                     robot.set_motion(**{k: v for k, v in data.items() if k != 'type'})
-                    await ws.send_json(dict(type='ack', message='Sensor motion applied'))
+                    await ws.send_json({'type': 'ack', 'message': 'Sensor motion applied'})
                 except (ValueError, TypeError) as error:
-                    await ws.send_json(dict(type='error', message=str(error)))
+                    await ws.send_json({'type': 'error', 'message': str(error)})
             elif message.type == WSMsgType.ERROR:
                 break
     finally:
@@ -150,9 +149,9 @@ async def configure_mechanisms(request):
             raise ValueError('Expected a mechanisms array')
         request.app[ROBOT].configure_mechanisms(data['mechanisms'])
     except (ValueError, TypeError) as error:
-        return web.json_response(dict(message=str(error)), status=400)
+        return web.json_response({'message': str(error)}, status=400)
     return web.json_response(request.app[ROBOT].snapshot(), headers={'Cache-Control': 'no-store',
-                             'Server-Timing': f'mechanisms;dur={(perf_counter() - started) * 1000:.3f}'})
+                                                                     'Server-Timing': f'mechanisms;dur={(perf_counter() - started) * 1000:.3f}'})
 
 
 async def place_mechanism(request):
@@ -169,12 +168,11 @@ async def place_mechanism(request):
             raise ValueError('Choose an applied drivetrain for the start position')
         mechanism.place(data['x_mm'], data['y_mm'], data['heading_deg'])
     except (ValueError, TypeError) as error:
-        return web.json_response(dict(message=str(error)), status=400)
+        return web.json_response({'message': str(error)}, status=400)
     return web.json_response(robot.snapshot(), headers={'Cache-Control': 'no-store'})
 
 
 async def ds(request):
-    """Serve the SvelteKit static bundle and its client-side routes."""
     root = (ROOT / 'web').resolve()
     relative = request.match_info.get('path', '')
     source = (root / relative).resolve()
@@ -185,7 +183,7 @@ async def ds(request):
         if source.name.endswith('.html'):
             cache = 'no-store'
         return web.FileResponse(source, headers={'Cache-Control': cache})
-    # Missing assets must be 404s, never an HTML fallback with the wrong MIME type.
+    # Only page routes may fall back to the SPA index.
     if relative.startswith('_app/') or Path(relative).suffix:
         raise web.HTTPNotFound()
     index = root / 'index.html'
@@ -199,14 +197,14 @@ async def home(request):
 
 
 async def shutdown(app):
-    """Close upgrades before aiohttp waits for their request handlers to finish."""
+    """Close WebSockets before aiohttp waits for handlers."""
     connections = app[CONNECTIONS]
     connections.stopping = True
     app[ROBOT].failsafe()
 
     async def close(ws, transport):
         try:
-            # One bounded, concurrent grace period, even for peers that stop reading.
+            # Bound shutdown for peers that stop reading.
             await asyncio.wait_for(ws.close(code=1001, message=b'Simulator stopping', drain=False), timeout=.5)
         except (asyncio.TimeoutError, ConnectionError, RuntimeError):
             if transport is not None:
@@ -234,7 +232,6 @@ async def lifecycle(app):
 
 
 def create_app(*, dev=False):
-    """Create the simulator API, optionally leaving the UI to the Vite dev server."""
     app = web.Application(client_max_size=1024 * 1024)
     app[ROBOT] = Robot()
     app[PEER] = SdkLink()

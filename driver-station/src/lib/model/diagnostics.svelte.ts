@@ -1,5 +1,5 @@
 /** Small, bounded probes. No telemetry history or per-frame reactive updates. */
-export class RoundTrip {
+class RoundTrip {
   ms = $state<number|null>(null);
   average = $state<number|null>(null);
   timeouts = $state(0);

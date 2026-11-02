@@ -24,5 +24,5 @@ class OdometryPod(Encoder):
         self.position += self.velocity * dt
 
     def state(self):
-        return dict(super().state(), axis=self.axis, offset_mm=self.offset,
-                    ticks_per_mm=self.ticks_per_mm, distance_mm=self.position / self.ticks_per_mm)
+        return {**super().state(), 'axis': self.axis, 'offset_mm': self.offset,
+                'ticks_per_mm': self.ticks_per_mm, 'distance_mm': self.position / self.ticks_per_mm}

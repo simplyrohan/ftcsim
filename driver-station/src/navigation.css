@@ -1,5 +1,4 @@
-/* Nested pills use outer radius = inner radius + padding + border.
-   Their intrinsic height comes from the button and inset, never extra min-height. */
+/* Outer pill radius = inner radius + padding + border. */
 :is(.sliding-tabs,.sliding-toggle) {
   --tab-inset:4px;
   --tab-border:0px;
@@ -72,7 +71,7 @@
 .gamepad-selector.sliding-toggle.compact button { width:var(--tab-height); height:var(--tab-height); min-height:0; padding:0!important; font-size:10px; }
 .scene-view-switch { --tab-height:var(--control-height-sm); --tab-inset:0px; display:flex; align-items:center; gap:var(--space-1); border-radius:var(--tab-outer-radius); }
 .scene-view-switch.sliding-toggle button[data-slot=button] { border-color:transparent; border-radius:var(--radius-navigation); color:var(--secondary); }
-.scene-view-switch.sliding-toggle button[data-slot=button][aria-pressed=true] { border-color:transparent; color:var(--white); }
+.scene-view-switch.sliding-toggle button[data-slot=button][aria-checked=true] { border-color:transparent; color:var(--white); }
 .scene-camera-controls button[aria-label='Follow robot'][aria-pressed=true],.scene-instrument-switch button[aria-pressed=true] { background:var(--accent-soft); border-color:transparent; border-radius:var(--radius-navigation); color:var(--white); }
 @media(max-width:640px) {
   [data-slot=tabs-list].sliding-tabs { width:100%; }

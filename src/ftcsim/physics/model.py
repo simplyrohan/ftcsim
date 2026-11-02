@@ -1,4 +1,4 @@
-"""Hub protocol routing and physical driver topology. No OpMode/DS lifecycle."""
+"""Lynx routing and physical device topology."""
 import struct
 from copy import deepcopy
 from .registers import HubState
@@ -89,7 +89,7 @@ class Hub(HubState):
         return super().dispatch(request)
 
     def snapshot(self):
-        return [dict(device.snapshot(), module=self.address) for device in self.devices]
+        return [{**device.snapshot(), 'module': self.address} for device in self.devices]
 
 
 class Robot:
@@ -139,8 +139,7 @@ class Robot:
             return
         self.failsafe()
         self.hubs = hubs
-        # Mechanisms never constrain the SDK's hardware map. Rebind to replacement
-        # drivers, or suspend the model with a visible error if a reference vanished.
+        # Missing mechanism bindings must not reject a valid hardware map.
         try:
             self.mechanisms = MECHANISMS.create_all(self.mechanism_configuration, self.driver_index(hubs))
             self.mechanism_error = ''
@@ -172,7 +171,7 @@ class Robot:
                 if type(validate_only) is not bool:
                     raise ValueError('validateOnly must be a boolean')
                 self.configure(request['devices'], validate_only=validate_only)
-                return dict(type=kind, id=identifier, status='ack', payload='')
+                return {'type': kind, 'id': identifier, 'status': 'ack', 'payload': ''}
             if kind != 'lynx':
                 raise ValueError('Expected Lynx or configuration request')
             address = request['module']
@@ -189,19 +188,18 @@ class Robot:
                 for mechanism in self.mechanisms:
                     mechanism.failsafe()
             self.command_count += 1
-            return dict(type=kind, id=identifier, status='response' if request.get('response') else 'ack', payload=payload.hex())
+            return {'type': kind, 'id': identifier, 'status': 'response' if request.get('response') else 'ack', 'payload': payload.hex()}
         except NotImplementedError:
-            return dict(type=kind, id=identifier, status='nack', reason=255)
+            return {'type': kind, 'id': identifier, 'status': 'nack', 'reason': 255}
         except (ValueError, KeyError, TypeError, IndexError, struct.error) as error:
-            return dict(type=kind, id=identifier, status='error', message=str(error))
+            return {'type': kind, 'id': identifier, 'status': 'error', 'message': str(error)}
 
     def advance(self, dt):
         dt = number(dt, 'dt')
         if dt < 0:
             raise ValueError('dt must be non-negative')
         roots = [driver for hub in self.hubs.values() for driver in hub.root_drivers]
-        # Global phases avoid a one-tick delay and hub-order dependence. Motors
-        # advance first; mechanisms read velocity; pods advance before their IMU.
+        # Tick actuators, mechanisms, then sensors, independent of hub order.
         for driver in roots:
             if driver.phase == 'actuator':
                 driver.advance(dt, self.motion)
@@ -215,9 +213,9 @@ class Robot:
 
     def snapshot(self):
         devices = [device for _, hub in sorted(self.hubs.items()) for device in hub.snapshot()]
-        return dict(type='state', connected=self.connected, commands=self.command_count,
-                    devices=devices, mechanisms=[mechanism.snapshot() for mechanism in self.mechanisms],
-                    mechanism_configuration=deepcopy(self.mechanism_configuration),
-                    mechanism_error=self.mechanism_error,
-                    motion=dict(vx=self.motion.vx, vy=self.motion.vy,
-                                               angular_velocity=self.motion.angular_velocity))
+        return {'type': 'state', 'connected': self.connected, 'commands': self.command_count,
+                'devices': devices, 'mechanisms': [mechanism.snapshot() for mechanism in self.mechanisms],
+                'mechanism_configuration': deepcopy(self.mechanism_configuration),
+                'mechanism_error': self.mechanism_error,
+                'motion': {'vx': self.motion.vx, 'vy': self.motion.vy,
+                           'angular_velocity': self.motion.angular_velocity}}

@@ -5,10 +5,10 @@ import type { Mechanism } from './types';
 import { canonical, copy, flatten, hardwareError, mechanismError } from './configuration';
 import { decodeHardwareMap, readHardwareFile } from './hardware-file';
 
-export const ROBOT_CONFIGURATION_FORMAT = 'ftcsim.robot-configuration';
+const ROBOT_CONFIGURATION_FORMAT = 'ftcsim.robot-configuration';
 const summary=(drivers:number,mechanisms:number)=>`${drivers} driver${drivers===1?'':'s'} and ${mechanisms} mechanism${mechanisms===1?'':'s'}`;
 
-/** A portable snapshot of both editors. Loading changes drafts, never live devices. */
+/** Import/export drafts without changing live devices. */
 export class RobotConfigurationFile {
   importing = $state(false);
   exporting = $state(false);
@@ -53,13 +53,12 @@ export class RobotConfigurationFile {
       this.message='Import cancelled. Current robot configuration kept.';return false;
     }
     if(!allowed())throw Error('The robot configuration changed while loading. Load the file again.');
-    // Give imported assets fresh IDs so a rejected import cannot overwrite a live model.
+    // Fresh IDs protect existing models if the import fails.
     const imported=new Map<string,string>();
     for (const [id,data] of decoded) { const replacement=crypto.randomUUID(); await saveModel(replacement,data); imported.set(id,replacement); }
     if (endpoint!==this.station.endpoint) throw Error('The SDK connection changed while loading the file. Load it again.');
     if(!allowed())throw Error('The robot configuration changed while loading. Load the file again.');
     for(const item of mechanisms)if(item.visual?.model)item.visual.model.id=imported.get(item.visual.model.id)!;
-    // Validate the entire file before replacing either editor, including driver bindings.
     hw.devices = hardware.devices; hw.notes = hardware.notes ?? ''; mech.definitions = mechanisms;
     hw.restorePending = mech.restorePending = false;
     hw.save(); mech.save();

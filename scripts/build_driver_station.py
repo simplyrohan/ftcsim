@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the standalone SvelteKit app and stage it as Python package data."""
+"""Build and stage the Driver Station for Python packaging."""
 from pathlib import Path
 import json
 import shutil
@@ -35,7 +35,7 @@ def main():
             if license_file.is_file():
                 name = package.removeprefix('node_modules/').replace('/', '-')
                 shutil.copy2(license_file, licenses / f'{name}-{license_file.name}')
-    # Stage the completed bundle before replacing any existing packaged frontend.
+    # Replace the packaged frontend only after the build succeeds.
     target = root / 'src' / 'ftcsim' / 'web'
     with tempfile.TemporaryDirectory(dir=target.parent) as temporary:
         staged = Path(temporary) / 'ds'

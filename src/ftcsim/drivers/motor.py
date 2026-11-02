@@ -9,9 +9,9 @@ from .motor_presets import GOBILDA_PRESETS
 class DCMotor(Encoder):
     display_name = 'DC motor'
     option_metadata = {
-        'max_rpm': dict(label='Maximum RPM', min=0.01),
-        'ticks_per_revolution': dict(label='Encoder ticks per output-shaft revolution', min=0.01),
-        'direction': dict(label='Physical direction', choices=[dict(value=1, label='Forward'), dict(value=-1, label='Reversed')]),
+        'max_rpm': {'label': 'Maximum RPM', 'min': 0.01},
+        'ticks_per_revolution': {'label': 'Encoder ticks per output-shaft revolution', 'min': 0.01},
+        'direction': {'label': 'Physical direction', 'choices': [{'value': 1, 'label': 'Forward'}, {'value': -1, 'label': 'Reversed'}]},
     }
     presets = GOBILDA_PRESETS
     kind = 'motor'
@@ -38,8 +38,8 @@ class DCMotor(Encoder):
 
     @staticmethod
     def normalize_options(options):
-        """Read existing hardware maps without exposing the old speed setting."""
-        options = dict(options)
+        """Convert legacy tick-rate limits to RPM."""
+        options = {**options}
         if 'max_ticks_per_second' in options:
             speed = number(options.pop('max_ticks_per_second'), 'max_ticks_per_second', positive=True)
             ticks = number(options.get('ticks_per_revolution', 537.7), 'ticks_per_revolution', positive=True)
@@ -50,8 +50,7 @@ class DCMotor(Encoder):
 
     @property
     def shaft_revolutions_per_second(self):
-        # Encoder coordinates remain native to the motor. Physical reversal is
-        # applied here so velocity control and RUN_TO_POSITION retain their meaning.
+        # Physical reversal does not change native encoder coordinates.
         return self.velocity / self.ticks_per_revolution * self.direction
 
     def register(self, name):
@@ -115,7 +114,7 @@ class DCMotor(Encoder):
         self.registers['MotorConstantPower'] = bytes(2)
 
     def state(self):
-        return dict(super().state(), enabled=self.enabled, mode=self.mode, power=self.power,
-                    max_ticks_per_second=self.max_speed, max_rpm=self.max_rpm,
-                    ticks_per_revolution=self.ticks_per_revolution, direction=self.direction,
-                    shaft_rpm=self.shaft_revolutions_per_second * 60)
+        return {**super().state(), 'enabled': self.enabled, 'mode': self.mode, 'power': self.power,
+                'max_ticks_per_second': self.max_speed, 'max_rpm': self.max_rpm,
+                'ticks_per_revolution': self.ticks_per_revolution, 'direction': self.direction,
+                'shaft_rpm': self.shaft_revolutions_per_second * 60}

@@ -9,6 +9,7 @@
   import HardwareSettings from './HardwareSettings.svelte';
   import MechanismSettings from './MechanismSettings.svelte';
   import RobotConfigurationFiles from './RobotConfigurationFiles.svelte';
+  import HelpTooltip from './HelpTooltip.svelte';
   import type { Station } from '$lib/model/station.svelte';
   let { station, tab='hardware' }: {station:Station;tab?:string} = $props();
   const sections = [
@@ -21,7 +22,7 @@
   let endpoint = $state('');
   $effect(()=>{endpoint=station.endpoint;});
 </script>
-<div class="page-heading"><div><div class="eyebrow">Workspace</div><h1>Settings</h1><p>Configure your robot, its motion, and your connection.</p></div></div>
+<div class="page-heading"><div><div class="eyebrow">Workspace</div><h1>Settings</h1></div></div>
 <Tabs.Root value={section} onValueChange={value=>{void goto(`${base}/settings/${value}`,{keepFocus:true,noScroll:true});}} class="settings-layout">
   <Tabs.List variant="line" class="settings-nav" aria-label="Settings sections">
     {#each sections as item}<Tabs.Trigger value={item.id}><item.icon size={15}/>{item.label}{#if item.id==='hardware'&&station.hardware.hasDraft&&!station.hardware.synchronized||item.id==='mechanisms'&&station.mechanisms.hasSaved&&!station.mechanisms.synchronized}<span class="unsaved-dot" aria-label="Unapplied changes"></span>{/if}</Tabs.Trigger>{/each}
@@ -31,14 +32,12 @@
     <Tabs.Content value="hardware"><HardwareSettings {station}/></Tabs.Content>
     <Tabs.Content value="mechanisms"><MechanismSettings {station}/></Tabs.Content>
     <Tabs.Content value="connection">
-      <div class="settings-heading"><div><h2>Connection</h2><p>Connect to the SDK running your robot code.</p></div></div>
+      <div class="settings-heading"><h2>Connection <HelpTooltip label="About connections" text="Run ./gradlew runSimulator in your robot project to start the SDK. Both SDK and simulator connections retry automatically every 2 seconds while disconnected."/></h2></div>
       <form class="connection-form" onsubmit={event=>{event.preventDefault();station.endpoint=endpoint;station.connect();}}>
         <label class="field"><span>SDK WebSocket address</span><Input type="url" bind:value={endpoint} placeholder="ws://localhost:1115/ds" required/></label>
-        <p class="fine-print">Start <code>./gradlew runSimulator</code> in your robot project, then connect here.</p>
         <Button variant="outline" type="submit" disabled={station.connecting}><RefreshCw size={14}/>{station.connecting?'Connecting…':'Reconnect'}</Button>
       </form>
-      <div class="connection-facts"><div><span>Simulator server</span><strong>{station.simulatorConnected?'Connected':'Reconnecting…'}</strong></div><div><span>SDK</span><strong>{station.connecting?'Connecting…':station.connected?station.controller?'Connected · controller':'Connected · observer':'Disconnected'}</strong></div><div><span>SDK → simulator</span><strong>{!station.simulatorConnected?'Unknown':station.physical?.connected?'Connected':'Waiting for SDK'}</strong></div><div><span>Storage</span><strong>This browser · per SDK address</strong></div></div>
-      <p class="fine-print">Hardware maps and mechanisms stay with this browser. Save a robot file to move your configuration and models between workspaces.</p>
+      <div class="connection-facts"><div><span>Simulator server</span><strong>{station.simulatorConnected?'Connected':'Reconnecting…'}</strong></div><div><span>SDK</span><strong>{station.connecting?'Connecting…':station.connected?station.controller?'Connected · controller':'Connected · observer':'Disconnected'}</strong></div><div><span>SDK → simulator</span><strong>{!station.simulatorConnected?'Unknown':station.physical?.connected?'Connected':'Waiting for SDK'}</strong></div><div><span class="label-with-help">Storage <HelpTooltip label="About browser storage" text="Hardware maps and mechanisms stay with this browser, per SDK address. Save a robot file to move your configuration and models between workspaces."/></span><strong>This browser · per SDK address</strong></div></div>
       {#if station.notice}<p class="form-notice" role="status">{station.notice}</p>{/if}
     </Tabs.Content>
     <Tabs.Content value="performance"><PerformanceSettings {station}/></Tabs.Content>

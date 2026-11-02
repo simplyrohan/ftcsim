@@ -1,6 +1,5 @@
 /** Portable hardware-map files deliberately exclude SDK addresses and live state. */
-export const HARDWARE_MAP_FORMAT = 'ftcsim.hardware-map';
-export const MAX_HARDWARE_MAP_BYTES = 1024 * 1024;
+const HARDWARE_MAP_FORMAT = 'ftcsim.hardware-map';
 
 /** FileReader also works in embedded browsers that don't expose Blob.text(). */
 export function readHardwareFile(file) {
@@ -48,8 +47,4 @@ export function decodeHardwareMap(text) {
   };
   check(record.devices);
   return {version:1, devices:record.devices, ...(record.notes ? {notes:record.notes} : {})};
-}
-
-export function encodeHardwareMap(devices, notes='') {
-  return JSON.stringify({format:HARDWARE_MAP_FORMAT, version:1, ...(notes ? {notes} : {}), devices}, null, 2) + '\n';
 }

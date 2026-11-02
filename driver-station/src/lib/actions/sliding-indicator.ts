@@ -2,7 +2,7 @@
 export function slidingIndicator(element: HTMLElement) {
   let frame = 0, disposed = false, initialized = false;
   const items = ':scope > a, :scope > button';
-  const active = ':scope > [aria-current="page"], :scope > [data-state="active"], :scope > [aria-pressed="true"]';
+  const active = ':scope > [aria-current="page"], :scope > [data-state="active"], :scope > [aria-pressed="true"], :scope > [aria-checked="true"]';
   const resize = new ResizeObserver(schedule);
   function observeItems() {
     resize.disconnect();
@@ -19,8 +19,7 @@ export function slidingIndicator(element: HTMLElement) {
     if (!visible) return;
     const container = element.getBoundingClientRect();
     const style = getComputedStyle(element);
-    // Absolute positioning starts inside the container border. Preserve fractional
-    // CSS pixels: offsetLeft/offsetWidth round them and visibly skew narrow pills.
+    // Preserve subpixel bounds and account for the container border.
     const x = bounds.left - container.left - parseFloat(style.borderLeftWidth) + element.scrollLeft;
     const y = bounds.top - container.top - parseFloat(style.borderTopWidth) + element.scrollTop;
     element.style.setProperty('--indicator-x', `${x}px`);
@@ -39,7 +38,7 @@ export function slidingIndicator(element: HTMLElement) {
     if (records.some(record=>record.type==='childList')) observeItems();
     schedule();
   });
-  changes.observe(element,{subtree:true,childList:true,attributes:true,attributeFilter:['aria-current','aria-pressed','data-state']});
+  changes.observe(element,{subtree:true,childList:true,attributes:true,attributeFilter:['aria-current','aria-pressed','aria-checked','data-state']});
   observeItems();schedule();
   // Text widths can change after the locally bundled fonts finish loading.
   void document.fonts.ready.then(schedule);

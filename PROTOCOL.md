@@ -1,168 +1,260 @@
-# Desktop transport protocol, version 1
+# Custom protocols and file formats
 
-All messages are UTF-8 JSON in standard WebSocket text messages. WebSocket framing
-replaces the former private TCP length prefix. Lynx numeric payload fields retain
-the SDK's little-endian binary layout; hex is only the JSON representation.
+WebSocket messages are UTF-8 JSON text. Numeric Lynx payloads retain the SDK's
+little-endian binary layout and are represented as hexadecimal strings.
 
-## SDK → Python: `ws://localhost:9015/sim`
+## SDK ⇄ simulator: `/sim`
 
-Opened once during DesktopSdk bootstrap, before any OpMode is constructed. All
-modules share it. Requests use monotonically increasing IDs and replies may be
-correlated independently. No automatic reconnection occurs after transport loss.
-
-```json
-{"version":1,"type":"lynx","id":1,"module":1,"command":"com.qualcomm.hardware.lynx.commands.core.LynxSetMotorConstantPowerCommand","payload":"00ff7f","response":null}
-```
-
-Before constructing SDK controllers, the runtime synchronizes the configured
-physical topology on this same connection:
+Requests include `version: 1` and an integer `id`. Replies echo the ID. One SDK
+owns the simulator at a time; losing this transport disables outputs and requires
+restarting that SDK process.
 
 ```json
-{"version":1,"type":"configure","id":1,"devices":[{"name":"motor","type":"motor","module":1,"port":0}]}
+{"version":1,"type":"configure","id":1,"devices":[{"name":"drive","type":"motor","module":1,"port":0}],"validateOnly":false}
 ```
 
-Python validates the entire tree and atomically replaces it. A successful reply
-is `{"type":"configure","id":1,"status":"ack","payload":""}`; invalid topology
-returns `status:"error"` with a message and leaves the physical model unchanged.
-Setting `validateOnly:true` validates without changing physical state; the SDK
-uses this preflight before closing old hardware during reconfiguration.
-Commands for unconfigured hubs are rejected. See [DRIVERS.md](DRIVERS.md) for the
-built-in catalog, nested encoder inputs, and configuration options.
+`configure` validates the complete device tree before replacing hardware.
+`validateOnly: true` performs the same validation without changing state.
+Invalid configuration preserves the previous hardware. Successful configuration
+returns `{"type":"configure","id":1,"status":"ack","payload":""}`.
 
-Writes return `{"type":"lynx","id":1,"status":"ack","payload":""}`.
-Reads return `status:"response"` with hex payload, decoded by the original SDK
-response class. Unsupported commands return `status:"nack",reason:255`; malformed
-requests return `status:"error",message:"..."`. Expected response names are sent
-by the SDK in `response`; Python dispatches by command class name, not by that
-response name. Commands use actual SDK payloads, not full USB datagrams or USB
-interface-number negotiation. Messages are limited to 1 MiB.
+```json
+{"version":1,"type":"lynx","id":2,"module":1,"command":"com.qualcomm.hardware.lynx.commands.core.LynxSetMotorConstantPowerCommand","payload":"00ff7f","response":null}
+```
 
-The SDK bounds sends/replies at three seconds. Transport/protocol failure closes
-the shared connection and fails pending calls. Python answers WebSocket pings and
-sends its own heartbeat. Disconnect disables all modeled outputs.
+`command` names the SDK command class. `payload` contains its serialized payload,
+not a full USB datagram. `response` is the expected response class or `null`.
 
-## Browser → SDK: `ws://localhost:1115/ds`
-
-The SDK listens on IPv4 loopback, accepts the simulator's localhost/127.0.0.1 HTTP
-origin (port matching its simulator URL), and accepts local program clients with
-no Origin header. `GET http://localhost:1115` reports service/version/WS path.
-Clients may also use `/` for the upgrade. All DS messages are custom JSON: this is
-not Robocol framing and a physical FTC DS app cannot connect.
-
-The SDK starts with an empty hardware map. On connect the SDK sends `role` (`controller:true` or `false`), `hello` (version,
-available OpModes, configured devices and `hardwareConfigured`), `status`, and the latest `telemetry` if
-available. Only the first connected client controls the robot. Others observe;
-they reconnect after the controller leaves to claim control. No browser-owned
-state is kept by Python.
-
-| Input type | Fields / behavior |
+| Reply status | Fields |
 | --- | --- |
-| `select` | `name`: one of the advertised OpMode names; inactive only. |
-| `configure` | `devices`: array of `{name,type,module,port}`; inactive only. Constructs actual SDK hardware objects. |
-| `init` | Constructs selected OpMode and starts original SDK init/init_loop or LinearOpMode thread. |
-| `start` | Starts the initialized OpMode through the SDK lifecycle hook. |
-| `stop` | Stops user code, then sends Lynx failsafe to each hub and invalidates controller caches. |
-| `gamepads` | `gamepad1` and `gamepad2` objects; omitted fields are neutral. |
-| `heartbeat` | Maintains DS session liveness without changing gamepads. |
+| `ack` | `type`, `id`, empty `payload` for writes. |
+| `response` | `type`, `id`, hexadecimal `payload` for reads. |
+| `nack` | `type`, `id`, `reason: 255` for unsupported commands. |
+| `error` | `type`, `id` when available, explanatory `message`. |
 
-Inputs may include `id`; success/error replies echo it. Heartbeats have no reply.
-Gamepad fields are four stick axes in [-1,1], two triggers in [0,1], and booleans
-`a,b,x,y,dpad_up,dpad_down,dpad_left,dpad_right,left_bumper,right_bumper,`
-`left_stick_button,right_stick_button,guide,start,back,touchpad`. SDK gamepad copy
-and serialization maintain the normal alias/edge behavior. Browser inputs are
-sent every 50 ms; the host event loop updates the SDK about every 20 ms.
-The browser also sends a separate heartbeat every 250 ms and immediately on
-focus/visibility restoration, so gamepad API failures do not interrupt liveness.
+Messages are limited to 1 MiB. SDK requests time out after three seconds.
 
-After 500 ms without gamepad updates the SDK uses neutral inputs. After 1.5 s
-without controller messages, or immediately on controller disconnect,
-it stops the OpMode and disables outputs. An unresponsive OpMode causes the SDK
-to close the simulator transport and refuse another INIT until restarted.
-Controller commands refresh liveness when received, including INIT/START after
-STOP or an idle period. Stale gamepad input remains neutral independently.
+## Driver Station ⇄ SDK: `/ds`
 
-## SDK → Browser
+This is a custom JSON protocol, independent of FTC Robocol framing. The first
+client receives control; later clients observe. A new connection can claim
+control after the controller disconnects.
 
-- `status`: `state` (`idle,initialized,running,stopped,error`), selected OpMode,
-  elapsed seconds, error text and simulator connectivity.
-- `telemetry`: tag and data from the actual SDK TelemetryMessage. The SDK telemetry
-  composer retains its configured transmission interval (default 250 ms).
-- `command`: original SDK command `name` and `extra`, including telemetry display
-  format commands, intercepted by the optional output transport.
-- `robocol`: fallback for other SDK data objects: original message kind and base64
-  serialization. The stock page has no generic decoder for these extra packets.
-- `ack` / `error`: command result and optional echoed ID.
+The SDK initially sends:
 
-The implemented DS functions are OpMode selection, hardware configuration,
-lifecycle, two gamepads, telemetry/status/errors. Android configuration XML tools,
-FTC discovery/pairing, camera streaming, gamepad LED/rumble effects, and other DS
-features are not implemented. The receive adapter intentionally does not start
-Android UDP/Wi-Fi services. Wire transport and lifecycle adapters are replaceable
-without changing robot programs.
+```json
+{"type":"role","controller":true}
+```
 
-## Browser → Python: `/sim/drivers`
+```json
+{"type":"hello","version":1,"opmodes":[{"name":"Example","class":"team.Example","flavor":"teleop"}],"devices":[],"hardwareConfigured":false}
+```
 
-A separate same-origin WebSocket streams a `drivers` catalog on connect, then
-physical `state` snapshots every 100 ms. This connection does not control OpModes,
-gamepads, or hardware power. Each snapshot contains `connected`, `commands`,
-`motion`, and `devices`. Each device has `name`, `type`, `connection`, `port`,
-`state`, and recursive `children`; root devices also contain `module`.
-`GET /sim/state` exposes the same snapshot for inspection.
+```json
+{"type":"status","state":"idle","selected":"Example","elapsed":0,"error":"","simulatorConnected":true}
+```
 
-For explicit physical sensor inputs, this socket accepts
-`{"type":"motion","vx":100,"vy":0,"angular_velocity":0.2}`.
-Velocities are robot-relative forward/left mm/s and counterclockwise rad/s.
-Values must be finite and bounded to ±10000 mm/s and ±100 rad/s. Omitted fields
-are zero. Applying motion requires a connected SDK and returns `ack`/`error`.
-Motion persists until changed or a hub failsafe, SDK STOP/disconnect, or valid
-reconfiguration clears it. This input affects only sensors not connected to a mechanism; connected sensors
-consume their mechanism's calculated motion. Multiple browser connections see the same state.
+The latest telemetry follows if available. OpModes are supplied by the consuming
+robot project. An SDK with no supplied OpModes advertises an empty list.
 
-## Browser-owned hardware configuration
+### Requests
 
-`GET /sim/driver-types` returns each built-in driver's label, connection type,
-port count, child connection/default rules, and constructor option metadata
-(labels, types, defaults, bounds, choices). The **Settings → Hardware map** modal builds forms
-from this catalog. Navigation uses the same SDK control connection.
+Only the controller may send requests. Except for `heartbeat`, requests receive
+an `ack` or `error` with a `message`; an optional request `id` is echoed.
 
-Hardware maps live in localStorage under
-`ftcsim.hardware.v1:<encoded SDK WebSocket URL>` as `{version:1, devices:[...]}`.
-They are scoped by browser origin and SDK address. Changes save locally as drafts;
-Apply sends `configure` directly to the SDK. A saved map automatically restores
-to an idle SDK on reconnect. Observers cannot apply maps, and applying is blocked
-while an OpMode is initialized/running. SDK `hello` includes
-`hardwareConfigured:false` until a DS configuration succeeds, including when an
-explicitly empty map is applied. INIT requires that flag to be true. The DS also
-blocks INIT when local edits differ from the SDK's applied map.
+| Type | Fields and semantics |
+| --- | --- |
+| `select` | `name`: advertised OpMode name; inactive only. |
+| `configure` | `devices`: complete hardware tree; inactive only. |
+| `init` | Initializes the selected OpMode; requires configured hardware. |
+| `start` | Starts an initialized OpMode. |
+| `stop` | Stops the OpMode, disables outputs, and invalidates controller caches. |
+| `gamepads` | `gamepad1`, `gamepad2`: input objects; omitted fields are neutral. |
+| `heartbeat` | Refreshes controller liveness; no reply. |
 
-The SDK retains its live map only for its process lifetime. No map is fetched
-from the setup wizard, a robot XML, or a Gradle config file.
+Gamepad axes `left_stick_x`, `left_stick_y`, `right_stick_x`, and `right_stick_y`
+range from -1 to 1. `left_trigger` and `right_trigger` range from 0 to 1.
+Buttons are booleans: `a`, `b`, `x`, `y`, `dpad_up`, `dpad_down`, `dpad_left`,
+`dpad_right`, `left_bumper`, `right_bumper`, `left_stick_button`,
+`right_stick_button`, `guide`, `start`, `back`, and `touchpad`.
 
-Portable hardware-map files use
-`{format:"ftcsim.hardware-map", version:1, devices:[...], notes?:"..."}`.
-Import/export is entirely browser-side. Imported maps are structurally and
-semantically validated before localStorage is replaced; importing does not send
-`configure`. Applying still uses the same SDK message and inactive-state checks.
-Optional notes stay with local/file copies and are not sent to the SDK.
+The SDK neutralizes gamepads after 500 ms without an input update and stops the
+OpMode after 1.5 seconds without controller messages, or on controller disconnect.
+Heartbeats keep the session alive without preserving stale gamepad input.
+An unresponsive OpMode makes the SDK reject another INIT until restarted.
+Requests are limited to 65,536 Java string characters; the command queue holds
+256 entries.
 
-## Simulator-only mechanisms
+### Events
 
-`GET /sim/mechanism-types` exposes the mechanism registry's driver slots and
-constructor options. `POST /sim/mechanisms` accepts `{"mechanisms": [...]}` from
-the simulator origin and atomically validates/applies driver references. Success
-returns the physical snapshot; invalid configuration returns HTTP 400 and keeps
-the prior mechanisms. Snapshots on `/sim/drivers` and `/sim/state` additionally
-include `mechanisms` (live model state), `mechanism_configuration` (definitions),
-and `mechanism_error` (e.g. suspended bindings after a hardware-map replacement).
+| Type | Fields |
+| --- | --- |
+| `status` | `state`: `idle`, `initialized`, `running`, `stopped`, or `error`; `selected`, `elapsed` in seconds, `error`, `simulatorConnected`. |
+| `hello` | Updated `opmodes`, `devices`, and `hardwareConfigured` after configuration. |
+| `telemetry` | `tag` and `data`: caption → string/number values from SDK telemetry. |
+| `command` | SDK command `name` and `extra`, including telemetry display format. |
+| `robocol` | `kind` and base64 `payload` for other serialized SDK data. |
+| `ack` / `error` | `message` and optional echoed `id`. |
 
-`POST /sim/mechanisms/place` accepts `{"mechanism":"drivebase","x_mm":0,
-"y_mm":0,"heading_deg":90}` from the simulator origin. The named mechanism must
-be an applied mecanum drivetrain with stopped motors. All coordinates must be
-finite numbers. Success returns a physical snapshot; invalid placement returns
-HTTP 400 without changing the pose. This is an instantaneous field placement,
-not simulated sensor motion: encoder and Pinpoint state remain untouched. The
-DS applies enabled per-OpMode start poses before sending the SDK's `init` frame.
+The hardware map lasts for the SDK process lifetime. Explicitly configuring an
+empty map sets `hardwareConfigured: true`. Mechanisms and visual model metadata
+are never sent to the SDK.
 
-This API is exclusively between the browser and Python. No mechanism messages or
-definitions cross the SDK transport or appear in the SDK HardwareMap. See
-[MECHANISMS.md](MECHANISMS.md) for the mecanum model and extension contract.
+## Driver Station ⇄ simulator
+
+Browser writes must have the simulator's origin. Requests without an Origin
+header are accepted for local program clients.
+
+### `/sim/drivers` WebSocket
+
+The server sends `{"type":"drivers","drivers":[...]}` once, then a physical
+snapshot approximately every 100 ms. `GET /sim/state` returns the same snapshot.
+
+```json
+{"type":"state","connected":true,"commands":0,"devices":[],"mechanisms":[],"mechanism_configuration":[],"mechanism_error":"","motion":{"vx":0,"vy":0,"angular_velocity":0}}
+```
+
+`connected` describes the SDK transport; `commands` counts accepted Lynx commands.
+Device snapshots contain `name`, `type`, `connection`, `port`, `state`, and
+recursive `children`; root devices also contain `module`. Mechanism snapshots
+contain `name`, `type`, `drivers`, and `state`. `mechanism_configuration` contains
+applied physics definitions; `mechanism_error` reports suspended bindings.
+
+Supported inputs:
+
+```json
+{"type":"ping","id":1}
+```
+
+The reply is `{"type":"pong","id":1}`. IDs must be integers. This probe does
+not change simulation state.
+
+```json
+{"type":"motion","vx":100,"vy":0,"angular_velocity":0.2}
+```
+
+Motion is robot-relative: forward/left mm/s and counterclockwise rad/s. Omitted
+components are zero; values must be finite and bounded to ±10,000 mm/s and
+±100 rad/s. A connected SDK is required. Replies are `ack` or `error` with a
+`message`. Motion persists until replaced or a failsafe, STOP, disconnect, or
+hardware reconfiguration clears it. Mechanism-bound sensors use mechanism motion
+instead. Input messages on this socket are limited to 64 KiB.
+
+### HTTP endpoints
+
+| Endpoint | Contract |
+| --- | --- |
+| `GET /sim/driver-types` | Driver catalog: `type`, `label`, `connection`, `ports`, `child_ports`, `child_connections`, `child_defaults`, `options`, `presets`. |
+| `GET /sim/mechanism-types` | Mechanism catalog: `type`, `label`, `description`, `drivers`, `options`, `exclusive`. Driver slots specify `name`, `label`, accepted `types`, `required`, and optional child requirements. |
+| `POST /sim/mechanisms` | `{"mechanisms":[...]}`; atomically replaces physics definitions and returns a snapshot. Invalid requests return HTTP 400 with `message`. Success includes `Server-Timing: mechanisms;dur=<milliseconds>`. |
+| `POST /sim/mechanisms/place` | `{"mechanism":"drivebase","x_mm":0,"y_mm":0,"heading_deg":90}`; places an applied drivetrain with stopped motors and returns a snapshot. Invalid requests return HTTP 400 with `message`. |
+
+Option metadata contains `name`, `label`, `type`, and `default`, with optional
+`min`, `max`, and `choices`. Choices are scalar values or `{value,label}` objects.
+HTTP request bodies are limited to 1 MiB.
+
+Replacing mechanisms resets drivetrain pose while preserving driver state.
+Field placement changes physical pose without changing encoder counts or IMU
+coordinates. Hardware replacement rebinds retained mechanisms; incompatible
+bindings suspend the mechanism set and populate `mechanism_error`.
+
+## Hardware definitions
+
+```json
+{"name":"drive","type":"motor","module":1,"port":0,"options":{"max_rpm":312,"ticks_per_revolution":537.7,"direction":1}}
+```
+
+Device fields are `name`, `type`, `module`, `port`, optional `options`, and optional
+`children`. Root hub addresses are integers 1–254. Motor/encoder/I²C ports are
+0–3; servo ports are 0–5. A motor occupies both its motor and encoder port.
+Names are unique across the tree and cannot use the reserved `hubN` pattern.
+
+Pinpoint children are odometry devices on string ports `x` and `y`, with no
+`module`. Their `axis` defaults to the parent port. Child devices are part of the
+parent and do not create separate SDK HardwareMap entries.
+
+Driver options are advertised by the catalog. Motor speed is output-shaft RPM;
+encoder resolution is ticks per output-shaft revolution. Physical `direction`
+is 1 or -1 and is independent of SDK motor direction. Pod `offset_mm`,
+`ticks_per_mm`, and `direction` describe physical mounting and wiring. Pinpoint
+resolution and offsets configure its estimator independently of physical pods.
+Legacy `max_ticks_per_second` motor values are converted to RPM when read.
+
+## Mechanism definitions
+
+```json
+{"name":"drivebase","type":"mecanum","drivers":{"front_left":"lf","front_right":"rf","rear_left":"lr","rear_right":"rr","pinpoint":"pinpoint"},"options":{"wheel_diameter_mm":96,"gear_ratio":1,"wheelbase_mm":360,"track_width_mm":360,"lateral_multiplier":1,"front_left_direction":1,"front_right_direction":1,"rear_left_direction":1,"rear_right_direction":1}}
+```
+
+Fields sent to Python are `name`, `type`, `drivers`, and optional `options`.
+Names must be unique; a definition's driver references must exist and satisfy
+the catalog's slot requirements. Exclusive mechanisms cannot share consumed
+drivers, including nested sensor inputs. Configuration is limited to 64 mechanisms.
+
+Mecanum dimensions are millimeters; `gear_ratio` is motor output turns per wheel
+turn. Mounting directions multiply physical motor directions. Optional `pinpoint`
+binds its existing X/Y pods. Pose uses `x_mm`, `y_mm`, and `heading_rad`; velocity
+uses forward/left mm/s and counterclockwise rad/s.
+
+Custom mechanisms optionally bind one motor or servo through `drivers.actuator`.
+They observe inputs without changing drivers or driving sensors. Their options
+are `motion` (`rotation` or `translation`), `axis` (`x`, `y`, or `z`), `direction`
+(1 or -1), `travel`, and `input_zero`:
+
+```text
+displacement = (input - input_zero) * travel * direction
+```
+
+Motor input is signed physical shaft revolutions; servo input is normalized 0–1.
+`travel` is degrees for rotation or millimeters for translation per input unit.
+
+## Robot archive: `.fs`
+
+An `.fs` file is a ZIP archive:
+
+```text
+robot.json
+models/model-1.glb
+models/model-2.glb
+```
+
+`robot.json` has this shape:
+
+```json
+{"format":"ftcsim.robot-configuration","version":2,"notes":"Optional text","devices":[],"mechanisms":[],"assets":{"model-id":"models/model-1.glb"}}
+```
+
+`devices` contains hardware definitions. `mechanisms` contains the physics
+fields above plus optional browser-only `visual` metadata:
+
+```json
+{"model":{"id":"model-id","name":"turret.glb"},"position":[0,0,100],"rotation":[0,0,90],"scale":1,"parent":"drivebase"}
+```
+
+Positions use millimeters with X forward, Y left, Z up. Rotations are roll X,
+pitch Y, yaw Z in degrees, composed yaw → pitch → roll. `scale` is a positive
+GLB geometry multiplier. An empty or omitted `parent` means world origin;
+otherwise placement follows that mechanism's moving origin. Parent references
+must exist and cannot form cycles. Geometry scale does not scale child offsets
+or actuator travel. Model origins are preserved.
+
+`assets` maps opaque model IDs to `models/<filename>.glb`; each referenced ID
+must exist. Shared IDs reuse one file. Model upload names are metadata, not paths.
+Imports assign fresh IDs to avoid overwriting existing browser assets.
+
+Archive and validation limits:
+
+- 64 MiB compressed and expanded, at most 130 ZIP entries.
+- `robot.json`: 1 MiB; each GLB: 20 MiB; at most 64 asset-map entries.
+- Stored and deflate ZIP compression are supported.
+- Duplicate paths, absolute paths, backslashes, NULs, and empty/`.`/`..` segments
+  are rejected. Unused safe entries are ignored but count toward limits.
+- Models must be self-contained binary glTF 2.0. Embedded buffers/textures and
+  Meshopt compression are supported; required Draco or KTX2 extensions are rejected.
+- Hardware trees contain at most 256 root devices, 1,024 devices total, and eight
+  child nesting levels.
+
+Invalid archives preserve the existing configuration. Standalone version 1 JSON
+robot files remain readable: they use the same root format and definitions but
+map model IDs to base64 GLBs in `assets`. Exports use version 2 ZIP archives.
+SDK addresses, live state, and per-OpMode start presets are excluded.

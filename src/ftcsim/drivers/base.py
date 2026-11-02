@@ -55,5 +55,5 @@ class Driver:
         return {}
 
     def snapshot(self):
-        return dict(name=self.name, type=self.kind, port=self.port, connection=self.connection,
-                    state=self.state(), children=[child.snapshot() for child in self.children.values()])
+        return {'name': self.name, 'type': self.kind, 'port': self.port, 'connection': self.connection,
+                'state': self.state(), 'children': [child.snapshot() for child in self.children.values()]}

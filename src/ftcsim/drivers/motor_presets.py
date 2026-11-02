@@ -1,8 +1,4 @@
-"""goBILDA 5203 Yellow Jacket no-load specifications at 12 V.
-
-Ticks are the manufacturer's quadrature counts at the gearbox output shaft,
-not encoder cycles. Sources are included in the catalog for traceability.
-"""
+"""goBILDA 5203 12 V specs; ticks are quadrature counts per output-shaft turn."""
 _SPECS = (
     ('0001', '1:1', 6000, 28),
     ('0003', '3.7:1', 1620, 103.8),
@@ -18,9 +14,9 @@ _SPECS = (
 )
 
 GOBILDA_PRESETS = tuple(
-    dict(id=f'gobilda-5203-{rpm}', label=f'goBILDA Yellow Jacket · {rpm} RPM ({ratio})',
-         options=dict(max_rpm=rpm, ticks_per_revolution=ticks),
-         source=(f'https://www.gobilda.com/content/spec_sheets/5203-2402-{sku}_spec_sheet.pdf'
-                 if sku != '0001' else 'https://www.gobilda.com/5203-series-yellow-jacket-motor-1-1-ratio-24mm-length-8mm-rex-shaft-6000-rpm-3-3-5v-encoder/'))
+    {'id': f'gobilda-5203-{rpm}', 'label': f'goBILDA Yellow Jacket · {rpm} RPM ({ratio})',
+     'options': {'max_rpm': rpm, 'ticks_per_revolution': ticks},
+     'source': (f'https://www.gobilda.com/content/spec_sheets/5203-2402-{sku}_spec_sheet.pdf'
+                 if sku != '0001' else 'https://www.gobilda.com/5203-series-yellow-jacket-motor-1-1-ratio-24mm-length-8mm-rex-shaft-6000-rpm-3-3-5v-encoder/')}
     for sku, ratio, rpm, ticks in _SPECS
 )

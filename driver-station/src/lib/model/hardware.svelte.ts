@@ -1,7 +1,7 @@
 import type { Station } from './station.svelte';
 import type { Device, DriverType } from './types';
 import { canonical, copy, defaults, flatten, hardwareError, topology } from './configuration';
-import { decodeHardwareMap, encodeHardwareMap, readHardwareFile, MAX_HARDWARE_MAP_BYTES } from './hardware-file';
+import { decodeHardwareMap } from './hardware-file';
 
 export class HardwareConfiguration {
   devices = $state<Device[]>([]);
@@ -11,7 +11,6 @@ export class HardwareConfiguration {
   hasDraft = $state(false);
   hasSaved = $state(false);
   busy = $state(false);
-  importing = $state(false);
   notes = $state('');
   message = $state('');
   storageError = $state('');
@@ -23,12 +22,12 @@ export class HardwareConfiguration {
   get error() { return this.loaded ? hardwareError(this.devices,this.catalog) : 'Loading driver catalog…'; }
   get sdkSynchronized() { return this.hasDraft && this.configured && canonical(this.devices) === canonical(this.remote); }
   get synchronized() { return this.sdkSynchronized && this.station.physical?.connected === true && topology(this.devices) === topology(this.station.physical.devices); }
-  get ready() { return this.loaded && this.synchronized && !this.busy && !this.importing && !this.error; }
+  get ready() { return this.loaded && this.synchronized && !this.busy && !this.error; }
   get count() { return flatten(this.devices).length; }
-  get canApply() { return !this.station.robotConfiguration.importing && this.loaded && this.station.canConfigure && !this.busy && !this.importing && !this.error; }
+  get canApply() { return !this.station.robotConfiguration.importing && this.loaded && this.station.canConfigure && !this.busy && !this.error; }
   load(endpoint:string) {
     this.epoch++; this.key = `ftcsim.hardware.v1:${encodeURIComponent(endpoint)}`;
-    this.devices = []; this.remote = []; this.configured = false; this.hasDraft = false; this.hasSaved = false; this.notes = ''; this.busy = false; this.importing = false; this.message = ''; this.storageError = ''; this.restorePending = true;
+    this.devices = []; this.remote = []; this.configured = false; this.hasDraft = false; this.hasSaved = false; this.notes = ''; this.busy = false; this.message = ''; this.storageError = ''; this.restorePending = true;
     try {
       const text = localStorage.getItem(this.key);
       if (text !== null) { const record = decodeHardwareMap(text); this.devices = record.devices; this.notes = record.notes ?? ''; this.hasDraft = this.hasSaved = true; }
@@ -58,34 +57,13 @@ export class HardwareConfiguration {
   }
   async remove(device:Device,parent?:Device) {
     const epoch=this.epoch,list=parent?.children??this.devices;
-    const allowed=()=>epoch===this.epoch&&!this.busy&&!this.importing&&!this.station.robotConfiguration.busy&&list.includes(device);
+    const allowed=()=>epoch===this.epoch&&!this.busy&&!this.station.robotConfiguration.busy&&list.includes(device);
     if(!allowed())return;
     const removed=flatten([device]),names=new Set([...removed.map(item=>item.name),...(parent?[parent.name]:[])]);
     const affected=this.station.mechanisms.definitions.filter(item=>Object.values(item.drivers).some(name=>names.has(name))).map(item=>item.name);
     const details=[...(removed.length>1?[`Also deletes connected encoders: ${removed.slice(1).map(item=>item.name).join(', ')}.`]:[]),...(affected.length?[`Used by ${affected.join(', ')}. Review these mechanisms’ driver connections afterward.`]:[]),'The deletion saves immediately. Apply the hardware map to update the SDK.'];
     if(!await this.station.confirmation.ask({title:`Delete driver “${device.name}”?`,description:'Remove this driver from your robot configuration.',action:'Delete driver',details,allowed})||!allowed())return;
     list.splice(list.indexOf(device),1);this.save();
-  }
-  async importText(text:string,label='JSON') {
-    if (new TextEncoder().encode(text).length > MAX_HARDWARE_MAP_BYTES) throw Error('Files must be at most 1 MiB.');
-    const record = decodeHardwareMap(text);
-    if (!this.loaded) throw Error('Wait for the driver catalog before importing.');
-    const error = hardwareError(record.devices,this.catalog); if (error) throw Error(error);
-    this.devices = record.devices; this.notes = record.notes ?? ''; this.save();
-    this.message = `Loaded ${label} · ${this.count} devices. Apply the map while stopped.`;
-  }
-  async importFile(file:File) {
-    if (this.importing || this.busy) return;
-    const epoch = this.epoch; this.importing = true;
-    try { if (file.size > MAX_HARDWARE_MAP_BYTES) throw Error('Files must be at most 1 MiB.'); const text = await readHardwareFile(file); if (epoch === this.epoch) await this.importText(String(text),file.name); }
-    catch (error) { if (epoch === this.epoch) this.message = `File not loaded: ${error instanceof Error ? error.message : error}`; }
-    finally { if (epoch === this.epoch) this.importing = false; }
-  }
-  exportFile() {
-    if (this.error) { this.message = this.error; return; }
-    const url = URL.createObjectURL(new Blob([encodeHardwareMap(this.devices,this.notes)],{type:'application/json'}));
-    const link = document.createElement('a'); link.href = url; link.download = 'ftcsim-hardware-map.json'; document.body.append(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(url),30000);
-    this.message = 'Hardware map saved to file.';
   }
   restore() {
     if (!this.restorePending || !this.loaded || !this.station.helloReceived || !this.station.canConfigure) return;

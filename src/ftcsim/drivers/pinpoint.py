@@ -1,8 +1,4 @@
-"""goBILDA Pinpoint register model, matched to the SDK 12 driver (firmware v3).
-
-Ideal planar IMU plus two passive encoder inputs. Physical wheel mounting lives
-on each pod; SDK offset/resolution/direction writes configure the estimator.
-"""
+"""Pinpoint firmware-v3 registers and an ideal planar estimator."""
 import math
 import struct
 from .base import number
@@ -155,8 +151,8 @@ class GoBildaPinpoint(I2CDriver):
         self.vx = self.vy = self.yaw_rate = 0.0
 
     def state(self):
-        return dict(address=self.address, status=self.status, x_mm=self.x, y_mm=self.y,
-                    heading_rad=self.heading, vx_mm_s=self.vx, vy_mm_s=self.vy,
-                    yaw_rate_rad_s=self.yaw_rate, ticks_per_mm=self.resolution,
-                    x_offset_mm=self.offsets[0], y_offset_mm=self.offsets[1],
-                    yaw_scalar=self.yaw_scalar, firmware_version=3)
+        return {'address': self.address, 'status': self.status, 'x_mm': self.x, 'y_mm': self.y,
+                'heading_rad': self.heading, 'vx_mm_s': self.vx, 'vy_mm_s': self.vy,
+                'yaw_rate_rad_s': self.yaw_rate, 'ticks_per_mm': self.resolution,
+                'x_offset_mm': self.offsets[0], 'y_offset_mm': self.offsets[1],
+                'yaw_scalar': self.yaw_scalar, 'firmware_version': 3}

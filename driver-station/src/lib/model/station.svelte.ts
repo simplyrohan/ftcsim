@@ -8,6 +8,8 @@ import { StartPositions } from './start-positions.svelte';
 import type { LogEntry, OpMode, PhysicalState } from './types';
 import { copy } from './configuration';
 
+const RECONNECT_DELAY = 2000;
+
 export class Station {
   endpoint = $state('');
   connected = $state(false);
@@ -40,7 +42,9 @@ export class Station {
   private commandEpoch = 0;
   private eventId = 0;
   private destroyed = false;
-  private reconnectTimer?:ReturnType<typeof setTimeout>;
+  private sdkReconnectTimer?:ReturnType<typeof setTimeout>;
+  private simulatorReconnectTimer?:ReturnType<typeof setTimeout>;
+  private catalogsLoading = false;
   private intervals:ReturnType<typeof setInterval>[] = [];
   get active() { return ['initialized','running'].includes(this.status); }
   get canConfigure() { return this.connected && this.controller && !['connecting','disconnected','initialized','running'].includes(this.status); }
@@ -64,23 +68,37 @@ export class Station {
     await this.loadCatalogs();
   }
   async loadCatalogs() {
-    await Promise.all([
-      (async()=>{try { const response = await fetch('/sim/driver-types',{cache:'no-store'}); if (!response.ok) throw Error('Cannot load driver catalog.'); this.hardware.catalog = await response.json(); this.hardware.loaded = true; this.restore(); } catch(error) { this.hardware.message = String(error); this.log(String(error),'error'); }})(),
-      (async()=>{try { const response = await fetch('/sim/mechanism-types',{cache:'no-store'}); if (!response.ok) throw Error('Cannot load mechanism catalog.'); this.mechanisms.catalog = await response.json(); this.mechanisms.loaded = true; this.restore(); } catch(error) { this.mechanisms.message = String(error); this.log(String(error),'error'); }})()
-    ]);
+    if (this.destroyed || this.catalogsLoading) return;
+    this.catalogsLoading = true;
+    try { await Promise.all([
+      (async()=>{if(this.hardware.loaded)return;try { const response = await fetch('/sim/driver-types',{cache:'no-store'}); if (!response.ok) throw Error('Cannot load driver catalog.'); this.hardware.catalog = await response.json(); this.hardware.loaded = true; this.restore(); } catch(error) { this.hardware.message = String(error); this.log(String(error),'error'); }})(),
+      (async()=>{if(this.mechanisms.loaded)return;try { const response = await fetch('/sim/mechanism-types',{cache:'no-store'}); if (!response.ok) throw Error('Cannot load mechanism catalog.'); this.mechanisms.catalog = await response.json(); this.mechanisms.loaded = true; this.restore(); } catch(error) { this.mechanisms.message = String(error); this.log(String(error),'error'); }})()
+    ]); } finally { this.catalogsLoading = false; }
   }
   connect() {
+    if (this.destroyed) return;
     let endpoint:string;
     try { const url = new URL(this.endpoint); if (!['ws:','wss:'].includes(url.protocol)) throw Error('Use a ws:// or wss:// address.'); endpoint = url.href; }
     catch(error) { this.notice = String(error); return; }
-    this.disconnect(); this.endpoint = endpoint; this.connecting = true; this.status = 'connecting'; this.error = ''; this.notice = ''; this.telemetry = {}; this.helloReceived = false;
+    this.disconnect(); this.endpoint = endpoint;
     this.hardware.load(endpoint); this.mechanisms.load(endpoint); this.startPositions.load(endpoint);
     try { localStorage.setItem('ftcsim.sdkEndpoint',endpoint); } catch { /* Drafts still work in this tab. */ }
+    this.connectSDK(endpoint);
+  }
+  private connectSDK(endpoint:string) {
+    if (this.destroyed) return;
+    clearTimeout(this.sdkReconnectTimer);
+    this.connecting = true; this.status = 'connecting'; this.error = ''; this.notice = ''; this.telemetry = {}; this.helloReceived = false;
     const address = import.meta.env.DEV && endpoint === __SDK_PROXY_TARGET__ ? `${location.protocol === 'https:'?'wss:':'ws:'}//${location.host}/sdk` : endpoint;
     const socket = this.sdk = new WebSocket(address);
     socket.onopen = () => { if (this.sdk !== socket) return; this.connected = true; this.connecting = false; this.log('Robot Controller connected.'); };
-    socket.onclose = () => { if (this.sdk !== socket) return; this.diagnostics.sdk.reset(); this.connected = this.controller = this.connecting = false; this.status = 'disconnected'; this.pendingCommand = ''; this.gamepads.reset(); this.failRequests(); this.log('Robot Controller disconnected.','error'); };
-    socket.onerror = () => { if (this.sdk === socket) this.notice = 'Cannot reach the Robot Controller. Start runSimulator, then reconnect.'; };
+    socket.onclose = () => {
+      if (this.sdk !== socket) return;
+      this.disconnect(); this.status = 'disconnected'; this.helloReceived = false; this.hardware.restorePending = this.mechanisms.restorePending = true;
+      this.log('Robot Controller disconnected. Retrying in 2 seconds.','error');
+      if (!this.destroyed) this.sdkReconnectTimer = setTimeout(()=>this.connectSDK(endpoint),RECONNECT_DELAY);
+    };
+    socket.onerror = () => { if (this.sdk === socket) { this.notice = 'Cannot reach the Robot Controller. Retrying every 2 seconds.'; socket.close(); } };
     socket.onmessage = event => {
       if (this.sdk !== socket) return;
       try { this.receive(JSON.parse(event.data)); } catch(error) { this.log(`Invalid controller message: ${error}`,'error'); }
@@ -134,19 +152,20 @@ export class Station {
   focus(focused:boolean) { this.gamepads.focused = focused; if (!focused) this.gamepads.reset(); else this.heartbeat(); }
   private connectPhysical() {
     if (this.destroyed) return;
+    clearTimeout(this.simulatorReconnectTimer);
     const socket = this.simulator = new WebSocket(`${location.protocol==='https:'?'wss:':'ws:'}//${location.host}/sim/drivers`);
-    socket.onopen = () => { if (this.simulator === socket) this.simulatorConnected = true; };
+    socket.onopen = () => { if (this.simulator === socket) { this.simulatorConnected = true; void this.loadCatalogs(); } };
     socket.onmessage = event => {
       if (this.simulator !== socket) return;
       try { const data = JSON.parse(event.data); if (data.type === 'state') { this.physical = data; this.restore(); } else if(data.type==='pong')this.diagnostics.simulator.finish(data.id); else if (data.type === 'error') this.notice = data.message; } catch(error) { this.log(`Invalid simulator message: ${error}`,'error'); }
     };
-    socket.onclose = () => { if (this.simulator !== socket) return; this.diagnostics.simulator.reset(); this.simulatorConnected = false; this.physical = null; this.mechanisms.restorePending = true; if (!this.destroyed) this.reconnectTimer = setTimeout(()=>this.connectPhysical(),1000); };
-    socket.onerror = () => socket.close();
+    socket.onclose = () => { if (this.simulator !== socket) return; this.simulator = null; this.diagnostics.simulator.reset(); this.simulatorConnected = false; this.physical = null; this.mechanisms.restorePending = true; if (!this.destroyed) this.simulatorReconnectTimer = setTimeout(()=>this.connectPhysical(),RECONNECT_DELAY); };
+    socket.onerror = () => { if (this.simulator === socket) socket.close(); };
   }
   private probeConnections() {
     if(document.hidden)return;
     if(this.simulator?.readyState===WebSocket.OPEN){const id=++this.sequence;if(this.diagnostics.simulator.begin(id))this.simulator.send(JSON.stringify({type:'ping',id}));}
-    // Observers cannot send control frames. The SDK already serves a tiny HTTP service response.
+    // Observers probe HTTP because control frames require ownership.
     if(this.connected && !this.controller){
       const id=++this.sequence;
       if(this.diagnostics.sdk.begin(id,'HTTP (observer)')){
@@ -163,6 +182,6 @@ export class Station {
     while (!predicate()) { if (this.destroyed || !this.connected) throw Error('Controller disconnected.'); if (Date.now()-start>timeout) throw Error('Simulator did not create the matching devices. Check its SDK connection.'); await new Promise(resolve=>setTimeout(resolve,50)); }
   }
   private failRequests() { for (const item of this.requests.values()) { clearTimeout(item.timer); item.reject(Error('Controller connection closed.')); } this.requests.clear(); }
-  private disconnect() { this.commandEpoch++; this.diagnostics.sdk.reset(); const socket = this.sdk; this.sdk = null; socket?.close(); this.connected = this.controller = false; this.pendingCommand = ''; this.gamepads.reset(); this.failRequests(); }
-  destroy() { this.confirmation.cancel(); this.diagnostics.destroy(); this.destroyed = true; this.disconnect(); clearTimeout(this.reconnectTimer); this.intervals.forEach(clearInterval); const socket = this.simulator; this.simulator = null; this.simulatorConnected = false; socket?.close(); }
+  private disconnect() { clearTimeout(this.sdkReconnectTimer); this.commandEpoch++; this.diagnostics.sdk.reset(); const socket = this.sdk; this.sdk = null; socket?.close(); this.connected = this.controller = this.connecting = false; this.pendingCommand = ''; this.gamepads.reset(); this.failRequests(); }
+  destroy() { this.confirmation.cancel(); this.diagnostics.destroy(); this.destroyed = true; this.disconnect(); clearTimeout(this.simulatorReconnectTimer); this.intervals.forEach(clearInterval); const socket = this.simulator; this.simulator = null; this.simulatorConnected = false; socket?.close(); }
 }

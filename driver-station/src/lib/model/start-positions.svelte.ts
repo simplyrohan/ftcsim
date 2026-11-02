@@ -1,6 +1,6 @@
 import type { Station } from './station.svelte';
 
-export interface StartPose { x_mm:number; y_mm:number; heading_deg:number }
+interface StartPose { x_mm:number; y_mm:number; heading_deg:number }
 interface ModeStart extends StartPose { enabled:boolean; mechanism:string }
 interface Preset extends StartPose { id:string; name:string }
 const empty=():ModeStart=>({enabled:false,mechanism:'',x_mm:0,y_mm:0,heading_deg:0});

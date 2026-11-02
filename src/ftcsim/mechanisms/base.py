@@ -23,7 +23,7 @@ class Pose2D:
         self.heading = (self.heading + turn + math.pi) % (2 * math.pi) - math.pi
 
     def snapshot(self):
-        return dict(x_mm=self.x, y_mm=self.y, heading_rad=self.heading)
+        return {'x_mm': self.x, 'y_mm': self.y, 'heading_rad': self.heading}
 
 
 class Mechanism(ABC):
@@ -57,6 +57,6 @@ class Mechanism(ABC):
         pass
 
     def snapshot(self):
-        return dict(name=self.name, type=self.kind,
-                    drivers={role: driver.name for role, driver in self.drivers.items()},
-                    state=self.state())
+        return {'name': self.name, 'type': self.kind,
+                'drivers': {role: driver.name for role, driver in self.drivers.items()},
+                'state': self.state()}

@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Build compiled SDK and every JVM dependency for Python wheel packaging.
-
-Requires JDK 17+ and network access for Gradle dependency resolution on first build.
-"""
+"""Compile and package the SDK and JVM dependencies."""
 from pathlib import Path
 import hashlib
 import json
@@ -20,9 +17,7 @@ def main():
     subprocess.run([wrapper, '--no-daemon', 'bundlePythonSdk',
                     f'-PftcsimBundleDir={target / "libs"}'],
                    cwd=root / 'sdk/desktop', check=True)
-    # Android UI resource tables/drawables are unused by the headless shims.
-    # Retain every class and non-UI resource (including ICU data), while avoiding
-    # shipping tens of megabytes of wallpapers and Android resource tables.
+    # Keep JVM classes and data while dropping Android UI resources.
     for android in (target / 'libs').glob('android-all-*.jar'):
         staged = android.with_suffix('.tmp')
         with ZipFile(android) as source, ZipFile(staged, 'w', ZIP_DEFLATED) as output:

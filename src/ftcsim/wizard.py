@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Install a desktop TeamCodeSim target into an FTC project with the packaged SDK.
-
-Run from the FTC project root:
-    ftcsim --wizard
-    ftcsim --wizard --yes --dry-run
-
-Robot sources/build files inside TeamCode are never edited. The default SDK mode
-links the bundled compiled SDK. --copy-sdk copies its binaries into the project.
-"""
+"""Configure a TeamCodeSim Gradle target using the packaged SDK."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -320,7 +312,6 @@ def make_plan(args) -> tuple[Plan, list[str]]:
     module = module.replace('__OPMODES__', json.dumps(','.join(opmodes)))
     plan.put('TeamCodeSim/build.gradle', module, managed=True)
     plan.put('TeamCodeSim/aar-to-jar.gradle', AAR_TRANSFORM, managed=True)
-    plan.put('TeamCodeSim/README.md', PROJECT_README, managed=True)
     extra = safe_path(root, 'TeamCodeSim/extra-dependencies.gradle')
     if not extra.exists():
         plan.put('TeamCodeSim/extra-dependencies.gradle', EXTRA_DEPENDENCIES)
@@ -350,7 +341,7 @@ def run(args):
             console.print('FTC simulator setup. Robot source files will not be edited.')
         plan, opmodes = make_plan(args)
         console.print('Project:', plan.root)
-        console.print('OpModes:', ', '.join(opmodes) or 'none discovered; SDK built-in demos only')
+        console.print('OpModes:', ', '.join(opmodes) or 'none discovered')
         console.print('SDK:', 'copy into project' if args.copy_sdk else 'link packaged SDK')
         console.print(f'Planned changes: {len(plan.changes)}')
         for change in plan.changes[:25]:
@@ -388,4 +379,3 @@ KOTLIN_SOURCES = (TEMPLATES / 'kotlin_sources.txt').read_text()
 MODULE = (TEMPLATES / 'module.txt').read_text()
 AAR_TRANSFORM = (TEMPLATES / 'aar_transform.txt').read_text()
 EXTRA_DEPENDENCIES = (TEMPLATES / 'extra_dependencies.txt').read_text()
-PROJECT_README = (TEMPLATES / 'project_readme.txt').read_text()

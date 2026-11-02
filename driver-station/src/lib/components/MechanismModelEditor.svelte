@@ -3,6 +3,8 @@
   import { Upload, Trash2, LoaderCircle, Box } from '@lucide/svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
+  import SelectField from './SelectField.svelte';
+  import HelpTooltip from './HelpTooltip.svelte';
   import { readBinaryFile, saveModel, MAX_MODEL_BYTES } from '$lib/model/model-assets';
   import type { Confirmation } from '$lib/model/confirmation.svelte';
   import type { Mechanism } from '$lib/model/types';
@@ -44,19 +46,18 @@
   }
 </script>
 <section class="mechanism-section">
-  <div class="mechanism-section-title"><span class="step-number">01</span><div><h3>Model</h3><p>Upload a GLB with its origin at the intended pivot.</p></div></div>
+  <div class="mechanism-section-title"><span class="step-number">01</span><h3>Model <HelpTooltip label="About mechanism models" text="Upload a GLB with its origin at the intended pivot. Models are saved in this browser and included in robot exports; they change the visual only."/></h3></div>
   <div class="model-upload">
-    <Box size={24} strokeWidth={1}/><div class="model-file-name"><strong>{definition.visual?.model?.name ?? (definition.type==='mecanum'?'Built-in mecanum model':'Origin marker')}</strong><span>{definition.visual?.model?'Saved in this browser · included in robot exports':'Your GLB replaces this visual only.'}</span></div>
+    <Box size={24} strokeWidth={1}/><div class="model-file-name"><strong>{definition.visual?.model?.name ?? (definition.type==='mecanum'?'Built-in mecanum model':'Origin marker')}</strong></div>
     <label class="file-button">{#if uploading}<LoaderCircle size={13} class="animate-spin"/>{:else}<Upload size={13}/>{/if}<span>{uploading?'Loading…':definition.visual?.model?'Replace':'Upload GLB'}</span><input bind:this={input} type="file" accept=".glb,model/gltf-binary" aria-label={`Upload GLB for ${definition.name}`} disabled={disabled||uploading} onclick={()=>input.value=''} onchange={()=>{const file=input.files?.[0];if(file)void upload(file);}}/></label>
     {#if definition.visual?.model}<Button variant="ghost" type="button" size="icon" aria-label="Remove uploaded model" disabled={disabled||uploading} onclick={removeModel}><Trash2 size={13}/></Button>{/if}
   </div>
   {#if message}<p class="fine-print" role="status">{message}</p>{/if}
-  <label class="field"><span>Model scale</span><div class="scale-input"><Input type="number" min="0.000001" step="any" value={definition.visual?.scale??1} {disabled} oninput={event=>{(definition.visual??={}).scale=event.currentTarget.value===''?NaN:Number(event.currentTarget.value);onchange();}}/><select class="control" aria-label="Model unit preset" {disabled} value={[1,.01,.001].includes(definition.visual?.scale??1)?String(definition.visual?.scale??1):'custom'} onchange={event=>{(definition.visual??={}).scale=Number(event.currentTarget.value);onchange();}}><option value="1">Meters · 1×</option><option value="0.01">Centimeters · 0.01×</option><option value="0.001">Millimeters · 0.001×</option><option value="custom" disabled>Custom scale</option></select></div></label>
+  <label class="field"><span>Model scale</span><div class="scale-input"><Input type="number" aria-label="Model scale" min="0.000001" step="any" value={definition.visual?.scale??1} {disabled} oninput={event=>{(definition.visual??={}).scale=event.currentTarget.value===''?NaN:Number(event.currentTarget.value);onchange();}}/><SelectField aria-label="Model unit preset" {disabled} value={[1,.01,.001].includes(definition.visual?.scale??1)?String(definition.visual?.scale??1):'custom'} items={[{value:'1',label:'Meters · 1×'},{value:'0.01',label:'Centimeters · 0.01×'},{value:'0.001',label:'Millimeters · 0.001×'},{value:'custom',label:'Custom scale',disabled:true}]} onValueChange={next=>{(definition.visual??={}).scale=Number(next);onchange();}}/></div></label>
 </section>
 <section class="mechanism-section">
-  <div class="mechanism-section-title"><span class="step-number">02</span><div><h3>Origin &amp; placement</h3><p>Offsets are relative to the selected mechanism’s moving origin.</p></div></div>
-  <label class="field"><span>Attach to origin</span><select class="control" value={definition.visual?.parent??''} {disabled} onchange={event=>{(definition.visual??={}).parent=event.currentTarget.value;onchange();}}><option value="">World origin · fixed</option>{#each definitions.filter(item=>item!==definition) as parent}<option value={parent.name} disabled={!possibleParent(parent.name)}>{parent.name} · {parent.type==='mecanum'?'robot origin':'moving origin'}</option>{/each}</select></label>
+  <div class="mechanism-section-title"><span class="step-number">02</span><h3>Origin &amp; placement <HelpTooltip label="About model placement" text="Offsets follow the selected mechanism’s moving origin. X is forward, Y is left, Z is up. Motion happens at the uploaded model’s origin after this starting pose. Model scale does not scale movement distance."/></h3></div>
+  <label class="field"><span>Attach to origin</span><SelectField aria-label="Attach to origin" value={definition.visual?.parent??''} {disabled} items={[{value:'',label:'World origin · fixed'},...definitions.filter(item=>item!==definition).map(parent=>({value:parent.name,label:`${parent.name} · ${parent.type==='mecanum'?'robot origin':'moving origin'}`,disabled:!possibleParent(parent.name)}))]} onValueChange={next=>{(definition.visual??={}).parent=next;onchange();}}/></label>
   <div class="vector-field"><span class="eyebrow">Starting position · mm</span><div class="vector-inputs">{#each ['X · forward','Y · left','Z · up'] as label,index}<label class="field"><span>{label}</span><Input type="number" step="any" value={definition.visual?.position?.[index]??0} {disabled} oninput={event=>update('position',index,event.currentTarget.value)}/></label>{/each}</div></div>
   <div class="vector-field"><span class="eyebrow">Starting orientation · degrees</span><div class="vector-inputs">{#each ['Roll · X','Pitch · Y','Yaw · Z'] as label,index}<label class="field"><span>{label}</span><Input type="number" step="any" value={definition.visual?.rotation?.[index]??0} {disabled} oninput={event=>update('rotation',index,event.currentTarget.value)}/></label>{/each}</div></div>
-  <p class="fine-print">X is forward, Y is left, Z is up. Rotation and translation happen at the uploaded model’s origin, after this starting pose. Model scale does not scale the movement distance.</p>
 </section>

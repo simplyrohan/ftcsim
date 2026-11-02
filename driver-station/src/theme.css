@@ -58,7 +58,7 @@
   --section-gap:var(--space-4);
   --control-height:36px;
   --control-height-sm:28px;
-  /* The supplied tab-slider curve, played over 300 ms in navigation.css. */
+  /* Tab slider easing, played over 300 ms. */
   --bounce-transition:linear(
     0,
     0.341 7.8%,

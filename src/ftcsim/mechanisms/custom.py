@@ -9,13 +9,13 @@ class CustomMechanism(Mechanism):
     display_name = 'Custom mechanism'
     description = 'Visual actuator follower. Reads a motor or servo without driving hardware or sensors.'
     exclusive = False
-    driver_slots = {'actuator': dict(label='Motor or servo', driver=(DCMotor, Servo), required=False)}
+    driver_slots = {'actuator': {'label': 'Motor or servo', 'driver': (DCMotor, Servo), 'required': False}}
     option_metadata = {
-        'motion': dict(label='Movement', choices=[dict(value='rotation', label='Rotation'), dict(value='translation', label='Translation')]),
-        'axis': dict(label='Local motion axis', choices=[dict(value='x', label='X · forward'), dict(value='y', label='Y · left'), dict(value='z', label='Z · up')]),
-        'direction': dict(label='Direction', choices=[dict(value=1, label='Forward'), dict(value=-1, label='Reversed')]),
-        'travel': dict(label='Travel per motor revolution / full servo range', min=0),
-        'input_zero': dict(label='Input at starting pose'),
+        'motion': {'label': 'Movement', 'choices': [{'value': 'rotation', 'label': 'Rotation'}, {'value': 'translation', 'label': 'Translation'}]},
+        'axis': {'label': 'Local motion axis', 'choices': [{'value': 'x', 'label': 'X · forward'}, {'value': 'y', 'label': 'Y · left'}, {'value': 'z', 'label': 'Z · up'}]},
+        'direction': {'label': 'Direction', 'choices': [{'value': 1, 'label': 'Forward'}, {'value': -1, 'label': 'Reversed'}]},
+        'travel': {'label': 'Travel per motor revolution / full servo range', 'min': 0},
+        'input_zero': {'label': 'Input at starting pose'},
     }
 
     def __init__(self, name, drivers, motion='rotation', axis='z', direction=1, travel=360, input_zero=0):
@@ -37,5 +37,5 @@ class CustomMechanism(Mechanism):
         actuator = self.drivers.get('actuator')
         position = (actuator.position / actuator.ticks_per_revolution * actuator.direction
                     if isinstance(actuator, DCMotor) else actuator.position if actuator else self.input_zero)
-        return dict(input_position=position, displacement=(position-self.input_zero)*self.travel*self.direction,
-                    motion=self.motion_type, axis=self.axis, bound=actuator is not None)
+        return {'input_position': position, 'displacement': (position-self.input_zero)*self.travel*self.direction,
+                'motion': self.motion_type, 'axis': self.axis, 'bound': actuator is not None}

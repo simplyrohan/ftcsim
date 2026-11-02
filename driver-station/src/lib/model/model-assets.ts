@@ -1,4 +1,3 @@
-/** Binary models live in IndexedDB; lightweight references stay in localStorage. */
 export const MAX_MODEL_BYTES = 20 * 1024 * 1024;
 export const MAX_ROBOT_BYTES = 64 * 1024 * 1024;
 const cache = new Map<string,ArrayBuffer>();

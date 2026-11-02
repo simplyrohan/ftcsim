@@ -47,20 +47,21 @@
 .scene-drivebase .tracking-encoders>div { padding:var(--widget-padding); }
 .scene-drivebase .tracking-encoders strong { font-size:12px; }
 .scene-feedback { border-top:var(--hairline-width) solid var(--border); }
-.scene-feedback summary { cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); padding:var(--compact-padding) var(--widget-padding); font-size:9px; color:var(--text-dim); }
-.scene-feedback summary::-webkit-details-marker { display:none; }
-.scene-feedback summary svg { transition:transform 150ms ease; }
-.scene-feedback[open] summary svg { transform:rotate(180deg); }
-.scene-feedback summary:focus-visible { outline:1px solid var(--ring); outline-offset:-3px; }
+button.scene-feedback-trigger[data-slot=collapsible-trigger] { cursor:pointer; width:100%; display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); padding:var(--compact-padding) var(--widget-padding); border:0; border-radius:0; font-size:9px; color:var(--text-dim); }
+.scene-feedback-trigger svg { transition:transform 180ms ease; }
+.scene-feedback-trigger[data-state=open] svg { transform:rotate(180deg); }
+.scene-feedback-trigger:focus-visible { outline:1px solid var(--ring); outline-offset:-3px; }
 .scene-mechanism-select { background:transparent; border:none; color:var(--text-muted); font:inherit; font-size:11px; width:100%; min-width:0; max-width:100%; }
 .scene-empty-state { padding:var(--widget-padding); font-size:10px; color:var(--text-muted); line-height:1.8; }
 .scene-empty-state button { margin-top:var(--space-3); }
 .scene-camera-controls { position:absolute; z-index:1; bottom:var(--overlay-gutter); left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:var(--space-1); padding:var(--toolbar-padding); border:var(--hairline-width) solid var(--hairline); border-radius:var(--radius-card); background:var(--overlay-background); backdrop-filter:blur(8px); }
+.scene-loading { position:absolute; z-index:3; top:var(--overlay-gutter); left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:var(--space-2); width:max-content; max-width:calc(100% - 2 * var(--overlay-gutter)); padding:var(--toolbar-padding) var(--widget-padding); border:var(--hairline-width) solid var(--hairline); border-radius:var(--radius-card); background:var(--overlay-background); backdrop-filter:blur(8px); color:var(--text-muted); font-size:11px; line-height:1.5; pointer-events:none; }
+.scene-loading svg { flex-shrink:0; }
+.scene-loading span { min-width:0; overflow-wrap:anywhere; }
 .scene-camera-controls button[data-slot=button] { height:var(--control-height-sm); width:var(--control-height-sm); padding:0; border-radius:var(--radius-button); border-color:transparent; font-size:10px; color:var(--text-dim); }
 .scene-camera-controls button[data-slot=button][aria-pressed=true] { border-color:var(--text-faint); color:var(--secondary); }
+.scene-camera-controls button[data-slot=button][aria-checked=true] { color:var(--secondary); }
 .scene-toolbar-divider { width:1px; height:15px; background:var(--border); margin-inline:var(--space-1); }
-.scene-camera-hint { position:absolute; bottom:72px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:9px; color:var(--text-faint); pointer-events:none; }
-.scene-camera-hint span { margin-inline:var(--space-2); color:var(--border); }
 .scene-render-message { position:absolute; top:48%; left:50%; transform:translate(-50%,-50%); width:min(320px,70%); text-align:center; font-size:11px; line-height:1.8; color:var(--text-muted); }
 .scene-instrument-switch { display:none; padding:var(--toolbar-padding); gap:var(--space-1); }
 
@@ -72,7 +73,6 @@
   .scene-instrument-switch button[data-slot=button] { height:var(--control-height-sm); font-size:10px; border-color:transparent; }
   .scene-instrument-switch button[aria-pressed=true] { border-color:var(--text-faint); }
   .scene-toolbar-label { display:none; }
-  .scene-camera-hint { display:none; }
 }
 /* Reserve the bottom control strip once the viewport cannot fit all three columns. */
 @media(max-width:1040px) {
@@ -109,6 +109,6 @@
 .scene-field-status { position:absolute; bottom:100px; left:50%; transform:translateX(-50%); font-size:10px; color:var(--text-muted); pointer-events:none; }
 .scene-controller { max-height:calc(100% - 104px); overflow:auto; scrollbar-width:thin; }
 .scene-controller .start-position { margin-top:0; }
-.overview-scene:has(.start-position[data-state=open]) .scene-drivebase { display:none; }
+.overview-scene:has(.start-position [data-slot=collapsible-content]) .scene-drivebase { display:none; }
 @media(min-width:1181px) { .scene-camera-controls .scene-toolbar-label { display:none; } }
 @media(max-width:640px) { .scene-field-status { bottom:64px; } }

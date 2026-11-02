@@ -12,8 +12,7 @@ if (!ftcsimPath) throw new GradleException('Run ftcsim --wizard first')
 def ftcsimLibs = new File(ftcsimPath, 'libs')
 dependencies { implementation fileTree(dir: ftcsimLibs, include: ['*.jar']) }
 
-// Copy dependency DECLARATIONS, not Android project outputs. This also captures
-// libraries declared inline in TeamCode's build script without parsing Gradle.
+// Copy dependency declarations, excluding Android project outputs.
 evaluationDependsOn(':TeamCode')
 def robot = project(':TeamCode')
 ['api', 'implementation', 'compileOnly', 'runtimeOnly'].each { name ->

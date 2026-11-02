@@ -7,8 +7,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MecanumVisual, disposeObject, type MechanismVisual } from './mecanum';
 import type { Mechanism, MechanismState, Options } from '$lib/model/types';
 
-// A new mechanism can register its own scene model without changing the viewport.
-export const mechanismVisuals = new Map<string,(options:Options)=>MechanismVisual>([
+const mechanismVisuals = new Map<string,(options:Options)=>MechanismVisual>([
   ['mecanum',options=>new MecanumVisual(options)],
 ]);
 export type CameraView = 'perspective'|'top';
@@ -30,6 +29,8 @@ export class DrivebaseViewport {
   private active='';
   private graphicsError='';
   private modelErrors=new Map<string,string>();
+  private loadingModels=new Set<string>();
+  private loadingSignature='[]';
   private follow=true;
   private followPosition=new THREE.Vector3();
   private offset=new THREE.Vector3();
@@ -49,24 +50,23 @@ export class DrivebaseViewport {
   private visibility=()=>{ this.visible=!document.hidden;this.updateLoop(); };
   private contextLost=(event:Event)=>{event.preventDefault();this.renderer.setAnimationLoop(null);this.graphicsError='The 3D graphics context was lost. Reload this page to restore the viewer.';this.onError(this.graphicsError);};
 
-  constructor(private canvas:HTMLCanvasElement,private onError:(message:string)=>void, private showOrigins=false, private options:{preview?:boolean;onMetrics?:(stats:ViewportStats)=>void;onFieldStatus?:(message:string)=>void}={}) {
+  constructor(private canvas:HTMLCanvasElement,private onError:(message:string)=>void, private showOrigins=false, private options:{preview?:boolean;onMetrics?:(stats:ViewportStats)=>void;onFieldStatus?:(message:string)=>void;onLoading?:(names:string[])=>void}={}) {
     this.renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,powerPreference:'high-performance'});
     this.renderer.setClearColor(0x000000,0);
     this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure=1;
+    this.renderer.toneMappingExposure=.68;
     // Subtle studio reflections keep PBR metals readable without a bright fill.
     const room=new RoomEnvironment(),pmrem=new THREE.PMREMGenerator(this.renderer);
     this.environment=pmrem.fromScene(room,.04);room.dispose();pmrem.dispose();
-    this.scene.environment=this.environment.texture;this.scene.environmentIntensity=.2;
+    this.scene.environment=this.environment.texture;this.scene.environmentIntensity=.12;
     this.maxFPS=options.preview?30:60;
     this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));
     this.scene.fog=new THREE.Fog(0x0c0d0d,5,17);
-    // A camera-relative key keeps surfaces readable while orbiting. The small
-    // offset reveals edges; weak fill preserves dark faces and material contrast.
-    const key=new THREE.DirectionalLight(0xffffff,2.5);
-    key.position.set(.4,.6,0);key.target.position.set(0,0,-1);
+    // Off-axis lighting and weak fill preserve contrast.
+    const key=new THREE.DirectionalLight(0xffffff,1.8);
+    key.position.set(1.4,1.8,1);key.target.position.set(0,0,-1);
     this.camera.add(key,key.target);this.scene.add(this.camera);
-    this.scene.add(new THREE.AmbientLight(0xffffff,.12));
+    this.scene.add(new THREE.AmbientLight(0xffffff,.04));
     for (const [divisions,opacity] of [[160,.32],[40,.26]]) {
       const grid=new THREE.GridHelper(40,divisions,0x545461,0x393941);
       const materials=Array.isArray(grid.material)?grid.material:[grid.material];
@@ -107,13 +107,13 @@ export class DrivebaseViewport {
     });
     const rebuilding=plans.some(plan=>this.models.get(plan.mechanism.name)?.signature!==plan.signature)||[...this.models.keys()].some(name=>!present.has(name));
     if(rebuilding)for(const entry of this.models.values())entry.visual.object.removeFromParent();
-    for(const [name,entry] of this.models)if(!present.has(name)){entry.visual.dispose();this.models.delete(name);this.modelErrors.delete(name);}
+    for(const [name,entry] of this.models)if(!present.has(name)){entry.visual.dispose();this.models.delete(name);this.modelErrors.delete(name);this.loadingModels.delete(name);}
     for(const {mechanism,definition,uploaded,signature,configuration} of plans){
       const factory=mechanismVisuals.get(mechanism.type);if(!factory&&!uploaded)continue;
       let entry=this.models.get(mechanism.name);
-      if(entry&&entry.signature!==signature){entry.visual.dispose();this.models.delete(mechanism.name);this.modelErrors.delete(mechanism.name);entry=undefined;}
+      if(entry&&entry.signature!==signature){entry.visual.dispose();this.models.delete(mechanism.name);this.modelErrors.delete(mechanism.name);this.loadingModels.delete(mechanism.name);entry=undefined;}
       if(!entry){
-        const visual=uploaded?new UploadedVisual(definition,message=>{this.modelErrors.set(mechanism.name,message);this.reportErrors();}):factory!(definition.options??{});
+        const visual=uploaded?new UploadedVisual(definition,message=>{this.modelErrors.set(mechanism.name,message);this.reportErrors();},loading=>{if(loading)this.loadingModels.add(mechanism.name);else this.loadingModels.delete(mechanism.name);this.reportLoading();}):factory!(definition.options??{});
         entry={visual,signature,configuration};this.models.set(mechanism.name,entry);this.modelBuilds++;
         if(this.showOrigins)(visual.origin??visual.object).add(new THREE.AxesHelper(.12));
       } else if(entry.configuration!==configuration){entry.visual.configure?.(definition);entry.configuration=configuration;}
@@ -128,14 +128,21 @@ export class DrivebaseViewport {
       if(entry.visual.object.parent!==target)target.add(entry.visual.object);
     }
     this.reportErrors();
+    this.reportLoading();
     if(this.active!==selected){this.active=selected;this.followInitialized=false;if(this.follow)this.recenter();}
   }
   private reportErrors(){this.onError([this.graphicsError,...this.modelErrors.values()].filter(Boolean).join(' · '));}
+  private reportLoading(){
+    const names=[...(this.fieldLoading&&this.fieldVisible?['field']:[]),...this.loadingModels],signature=JSON.stringify(names);
+    if(signature===this.loadingSignature)return;
+    this.loadingSignature=signature;this.options.onLoading?.(names);
+  }
   async setField(visible:boolean){
     this.fieldVisible=visible;
+    this.reportLoading();
     if(this.field){this.field.visible=visible;this.ground.visible=!visible;return;}
     if(!visible||this.fieldLoading)return;
-    this.fieldLoading=true;this.options.onFieldStatus?.('Loading field…');
+    this.fieldLoading=true;this.options.onFieldStatus?.('');this.reportLoading();
     try {
       const field=await loadField();
       if(this.disposed){disposeObject(field);return;}
@@ -143,7 +150,7 @@ export class DrivebaseViewport {
       if(this.fieldVisible)this.recenter();
       this.options.onFieldStatus?.('');
     } catch {if(!this.disposed)this.options.onFieldStatus?.('Field could not load. Toggle Field to retry.');}
-    finally {this.fieldLoading=false;}
+    finally {this.fieldLoading=false;if(!this.disposed)this.reportLoading();}
   }
   setActive(enabled:boolean){if(this.enabled===enabled)return;this.enabled=enabled;this.updateLoop();}
   private updateLoop(){this.previous=this.lastRendered=0;this.statsSince=performance.now();this.frameCount=this.renderTime=0;this.renderer.setAnimationLoop(this.visible&&this.enabled&&this.inView&&!this.graphicsError?this.render:null);if(!this.visible||!this.enabled||!this.inView)this.reportMetrics(false);}

@@ -20,9 +20,8 @@ class BuildPy(build_py):
         if not self.editable_mode:
             package = Path(self.build_lib) / 'ftcsim'
             source = Path(self.get_package_dir('ftcsim')).resolve()
-            # Hashed frontend assets and versioned JARs must not accumulate in
-            # an incremental wheel build. Retire the former vanilla DS as well.
-            for name in ('ds', 'web', 'sdk'):
+            # Remove stale hashed assets and JARs from incremental builds.
+            for name in ('web', 'sdk'):
                 target = package / name
                 if target.resolve() != source / name and target.is_dir():
                     shutil.rmtree(target)

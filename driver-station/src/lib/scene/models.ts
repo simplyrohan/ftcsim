@@ -13,7 +13,7 @@ export async function parseModel(data:ArrayBuffer) {
 }
 const axisVectors={x:new THREE.Vector3(1,0,0),y:new THREE.Vector3(0,0,-1),z:new THREE.Vector3(0,1,0)};
 const basis=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2);
-export function robotRotation(values:number[]=[0,0,0]) {
+function robotRotation(values:number[]=[0,0,0]) {
   return basis.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...values.map(value=>THREE.MathUtils.degToRad(Number.isFinite(value)?value:0)) as [number,number,number],'ZYX'))).multiply(basis.clone().invert());
 }
 
@@ -31,16 +31,16 @@ export class UploadedVisual implements MechanismVisual {
   private procedural?:MecanumVisual;
   private model?:THREE.Group;
   private modelScale=new THREE.Vector3(1,1,1);
-  constructor(private definition:Mechanism, onError:(message:string)=>void) {
+  constructor(private definition:Mechanism, onError:(message:string)=>void, onLoading:(loading:boolean)=>void=()=>{}) {
     this.object.name=definition.name;
     this.object.add(this.mount);this.mount.add(this.origin);
     const visual=definition.visual ?? {};
-    if(visual.model)void loadModel(visual.model.id).then(parseModel).then(model=>{
+    if(visual.model){onLoading(true);void loadModel(visual.model.id).then(parseModel).then(model=>{
       if(this.disposed){disposeObject(model);return;}
       // Uploaded node transforms are static; movement is applied to the mechanism pivot.
       model.traverse(node=>{node.updateMatrix();node.matrixAutoUpdate=false;});
       this.model=model;this.modelScale.copy(model.scale);this.applyScale();this.origin.add(model);
-    }).catch(error=>{if(!this.disposed)onError(`${definition.name}: ${error instanceof Error?error.message:error}`);});
+    }).catch(error=>{if(!this.disposed)onError(`${definition.name}: ${error instanceof Error?error.message:error}`);}).finally(()=>{if(!this.disposed)onLoading(false);});}
     else if(definition.type==='mecanum'){this.procedural=new MecanumVisual(definition.options);this.origin.add(this.procedural.object);}
     else {
       const marker=new THREE.AxesHelper(.15);this.origin.add(marker);

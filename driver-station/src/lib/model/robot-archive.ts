@@ -1,8 +1,8 @@
 import { unzip, zip, strFromU8, strToU8, type Unzipped, type UnzipFileInfo } from 'fflate';
 import { MAX_MODEL_BYTES, MAX_ROBOT_BYTES } from './model-assets';
 
-export const ROBOT_CONFIG_PATH='robot.json';
-export const MAX_CONFIG_BYTES=1024*1024;
+const ROBOT_CONFIG_PATH='robot.json';
+const MAX_CONFIG_BYTES=1024*1024;
 function expand(data:Uint8Array,filter:(file:UnzipFileInfo)=>boolean):Promise<Unzipped> {
   return new Promise((resolve,reject)=>unzip(data,{filter},(error,files)=>error?reject(error):resolve(files)));
 }

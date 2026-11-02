@@ -17,9 +17,10 @@ export class Gamepads {
     this.selected = index;
   }
   key(event:KeyboardEvent, down:boolean) {
+    if (!down) { this.keys.delete(event.code); return; }
     const target = event.target as HTMLElement;
-    if (['INPUT','TEXTAREA','SELECT'].includes(target.tagName) || target.isContentEditable) return;
-    if (down && this.enabled) { this.keys.add(event.code); if (event.code.startsWith('Arrow')) event.preventDefault(); }
+    if (event.defaultPrevented || target?.closest?.('input,textarea,select,[contenteditable],[role="combobox"],[role="listbox"],[role="menu"],[role="toolbar"],[data-slot="tooltip-trigger"]')) { this.keys.delete(event.code); return; }
+    if (this.enabled) { this.keys.add(event.code); if (event.code.startsWith('Arrow')) event.preventDefault(); }
     else this.keys.delete(event.code);
   }
   sample() {
