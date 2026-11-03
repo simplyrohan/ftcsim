@@ -50,3 +50,6 @@ tasks.named('sourcesJar') {
     from sourceSets.desktop.allSource
     from('../LICENSE') { into 'META-INF'; rename { 'FTC-SDK-LICENSE' } }
 }
+tasks.withType(Jar).configureEach {
+    from('../../LICENSE') { into 'META-INF'; rename { 'FTCSIM-GPL-3.0-LICENSE' } }
+}

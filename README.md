@@ -1,28 +1,39 @@
 # ftcsim
 
-A desktop FTC simulator: the modified Java SDK runs TeamCode, Python models
-hardware and mechanisms, and a SvelteKit Driver Station configures and displays
-the robot. Mechanisms connect simulated drivers without appearing in the SDK.
+A desktop runtime and simulator for FTC robot code.
 
-The desktop host runs standalone FTC `@OnCreate`/`@OnDestroy` hooks from TeamCode
-and its dependencies. Libraries requiring Android event-loop or web-server hooks
-are reported and skipped. FTC Dashboard and Panels need desktop adapters before
-their full dashboards can run; Sloth's Android hot reload is not supported.
+## Installation and Setup
 
-## Run
-
+Make sure you have Python 3.10+ and Android Studio (which I would hope you do) installed.
+```sh
+pip install ftcsim
+```
+or
 ```sh
 pipx install ftcsim
+```
+
+**Setup**
+```sh
 cd /path/to/your/FTC-project
 ftcsim --wizard
+```
+This will install the TeamCodeSim package and desktop version of the SDK into your project. It'll also add gradle tasks to start the simulator.
+
+## Usage
+
+Either in the Android Studio terminal or in another window run the robot simulator and driver station server.
+```sh
 ftcsim
 ```
 
-Run `./gradlew runSimulator` in the robot project to launch its SDK and TeamCode.
-`ftcsim --help` lists CLI options. Wheel installations include the compiled SDK
-and Driver Station; robot projects need JDK 17+.
+You can use the Driver Station at [localhost:9015/ds/](http://localhost:9015/ds/).
 
-## Develop and build
+Run `./gradlew runSimulator` in the robot project to launch its SDK and TeamCode. You can also change the Gradle target in Android Studio to run it from your IDE.
+
+TODO: Add screenshot
+
+## Development
 
 Source builds require Python 3.10+, JDK 17+, Node.js 22.12+, and npm.
 
@@ -32,22 +43,15 @@ ftcsim --dev
 ```
 
 Run `npm ci` and `npm run dev` in `driver-station/` for frontend development;
-`npm run check` checks its TypeScript and Svelte code. Development proxy overrides
-are listed in `driver-station/.env.example`.
 
 ```sh
 python3 -m pip install build
 python3 -m build
 ```
 
-The Python build invokes `scripts/build_driver_station.py` and
-`scripts/build_sdk.py`. They compile and stage frontend assets, dependency
-licenses, and JVM libraries into the package. Either script can also be run
-independently. The SDK resource generator remains part of its Gradle build.
+The Python build runs `scripts/build_driver_station.py` and
+`scripts/build_sdk.py`. They compile the frontend and JVM libraries into the package. Either script can also be run
+independently.
 
-## Protocols and formats
-
-[PROTOCOL.md](PROTOCOL.md) defines the custom SDK/Driver Station messages,
-simulator API, and `.fs` robot archive format. SDK sources retain their upstream
-namespaces and license notices. The Android SDK workspace remains independent
-of the desktop build.
+## License
+ftcsim is licensed under [GNU GPL v3](LICENSE). The bundled FTC SDK retains its own [license](sdk/LICENSE).

@@ -9,6 +9,10 @@ dependencies {
 }
 java { sourceCompatibility = JavaVersion.VERSION_11; targetCompatibility = JavaVersion.VERSION_11; withSourcesJar() }
 tasks.named('compileJava') { options.release = 11; options.encoding = 'UTF-8' }
+tasks.withType(Jar).configureEach {
+    from('../../LICENSE') { into 'META-INF'; rename { 'FTCSIM-GPL-3.0-LICENSE' } }
+    from('../LICENSE') { into 'META-INF'; rename { 'FTC-SDK-LICENSE' } }
+}
 tasks.register('writeClasspath') {
     dependsOn 'classes', ':sdk:jar'
     doLast { file('build/classpath.txt').text = sourceSets.main.runtimeClasspath.asPath }

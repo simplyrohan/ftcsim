@@ -33,9 +33,8 @@ public final class DesktopSdk implements AutoCloseable {
         simulator = new SimulatorTransport(endpoint);
         ds = new DriverStationServer(dsPort, endpoint.getPort() == -1 ? 80 : endpoint.getPort());
         try {
-            register(MotorDemo.class); register(LinearMotorDemo.class);
             for (String name : opmodes) register(Class.forName(name).asSubclass(OpMode.class));
-            if (!opmodes.isEmpty()) selected = new ArrayList<>(modes.keySet()).get(modes.size() - 1);
+            if (!modes.isEmpty()) selected = new ArrayList<>(modes.keySet()).get(modes.size() - 1);
             devices = new JsonParser().parse(configuration.toString()).getAsJsonArray();
             hardware = new HardwareFactory(context, simulator, devices);
             hardwareConfigured = devices.size() > 0;

@@ -1,6 +1,7 @@
 import type { ViewportStats } from '$lib/model/diagnostics.svelte';
 import { UploadedVisual } from './models';
 import { loadField } from './field';
+import { ViewerColorGrade } from './color-grade';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -20,6 +21,7 @@ export class DrivebaseViewport {
   private fieldLoading=false;
   private camera=new THREE.PerspectiveCamera(38,1,.01,120);
   private renderer:THREE.WebGLRenderer;
+  private colorGrade:ViewerColorGrade;
   private environment:THREE.WebGLRenderTarget;
   private controls:OrbitControls;
   private observer:ResizeObserver;
@@ -53,20 +55,22 @@ export class DrivebaseViewport {
   constructor(private canvas:HTMLCanvasElement,private onError:(message:string)=>void, private showOrigins=false, private options:{preview?:boolean;onMetrics?:(stats:ViewportStats)=>void;onFieldStatus?:(message:string)=>void;onLoading?:(names:string[])=>void}={}) {
     this.renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,powerPreference:'high-performance'});
     this.renderer.setClearColor(0x000000,0);
-    this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure=.68;
-    // Subtle studio reflections keep PBR metals readable without a bright fill.
+    this.renderer.toneMapping=THREE.NeutralToneMapping;
+    this.renderer.toneMappingExposure=1;
+    // Neutral tone mapping retains saturated colors; reflections reveal dark metal.
     const room=new RoomEnvironment(),pmrem=new THREE.PMREMGenerator(this.renderer);
     this.environment=pmrem.fromScene(room,.04);room.dispose();pmrem.dispose();
-    this.scene.environment=this.environment.texture;this.scene.environmentIntensity=.12;
+    this.scene.environment=this.environment.texture;this.scene.environmentIntensity=.4;
     this.maxFPS=options.preview?30:60;
     this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    this.colorGrade=new ViewerColorGrade(this.renderer);
+    this.renderer.info.autoReset=false;
     this.scene.fog=new THREE.Fog(0x0c0d0d,5,17);
     // Off-axis lighting and weak fill preserve contrast.
-    const key=new THREE.DirectionalLight(0xffffff,1.8);
+    const key=new THREE.DirectionalLight(0xffffff,2.5);
     key.position.set(1.4,1.8,1);key.target.position.set(0,0,-1);
     this.camera.add(key,key.target);this.scene.add(this.camera);
-    this.scene.add(new THREE.AmbientLight(0xffffff,.04));
+    this.scene.add(new THREE.AmbientLight(0xffffff,.12));
     for (const [divisions,opacity] of [[160,.32],[40,.26]]) {
       const grid=new THREE.GridHelper(40,divisions,0x545461,0x393941);
       const materials=Array.isArray(grid.material)?grid.material:[grid.material];
@@ -92,6 +96,7 @@ export class DrivebaseViewport {
     if (!width || !height) return;
     this.camera.aspect=width/height;this.camera.updateProjectionMatrix();
     this.renderer.setSize(width,height,false);
+    this.colorGrade.resize();
   }
 
   sync(mechanisms:MechanismState[],definitions:Mechanism[],selected:string) {
@@ -183,7 +188,7 @@ export class DrivebaseViewport {
       else{this.offset.copy(target).sub(this.controls.target);this.camera.position.add(this.offset);this.controls.target.copy(target);this.followInitialized=true;}
       this.followPosition.copy(target);
     }
-    this.controls.update();this.renderer.render(this.scene,this.camera);
+    this.controls.update();this.renderer.info.reset();this.colorGrade.render(this.scene,this.camera);
     this.frameCount++;this.renderTime+=performance.now()-started;
     if(performance.now()-this.statsSince>=1000){this.reportMetrics(true);this.statsSince=performance.now();this.frameCount=this.renderTime=0;}
   };
@@ -194,6 +199,6 @@ export class DrivebaseViewport {
     document.removeEventListener('visibilitychange',this.visibility);this.canvas.removeEventListener('webglcontextlost',this.contextLost);
     for(const entry of this.models.values())entry.visual.object.removeFromParent();
     for(const entry of this.models.values())entry.visual.dispose();this.models.clear();
-    disposeObject(this.scene);this.environment.dispose();this.renderer.dispose();this.renderer.forceContextLoss();
+    disposeObject(this.scene);this.colorGrade.dispose();this.environment.dispose();this.renderer.dispose();this.renderer.forceContextLoss();
   }
 }

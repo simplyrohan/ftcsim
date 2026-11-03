@@ -26,7 +26,8 @@ def main(argv=None):
                '  ftcsim --dev                   Use the npm Driver Station dev server\n'
                '  ftcsim --port 9016             Use a different simulator port\n'
                '  ftcsim --wizard                Configure the current project\n'
-               '  ftcsim -w --project /path/to/robot --dry-run',
+               '  ftcsim -w --project /path/to/robot --dry-run'
+               'Made by @simplyrohan at 29619 Axiom Robotics',
     )
     parser._optionals.title = 'General options'
     parser.add_argument('--version', action='version', version=f'ftcsim {__version__}')
