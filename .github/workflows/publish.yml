@@ -1,0 +1,117 @@
+name: Build and publish
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: driver-station/package-lock.json
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+      - name: Install build tools
+        run: python -m pip install build twine
+      - name: Set distribution version
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          from packaging.version import Version
+
+          path = Path('src/ftcsim/__init__.py')
+          source = path.read_text()
+          match = re.search(r'^__version__ = "([^"]+)"$', source, re.MULTILINE)
+          base = Version(match[1])
+          if base.is_prerelease or base.is_postrelease or base.local:
+              raise ValueError('The source version must be a base release such as 0.1.0.')
+          version = str(Version(f'{base}.post{int(os.environ["BUILD_NUMBER"])}'))
+          path.write_text(source[:match.start(1)] + version + source[match.end(1):])
+          print(f'Distribution version: {version}')
+          PY
+      - name: Check Driver Station
+        run: |
+          npm ci --prefix driver-station --no-audit --no-fund
+          npm run check --prefix driver-station
+      - name: Build source distribution and wheel
+        run: python -m build
+      - name: Validate distribution metadata
+        run: python -m twine check --strict dist/*
+      - name: Smoke check installed wheel
+        run: |
+          python -m pip install dist/*.whl
+          cd "$RUNNER_TEMP"
+          ftcsim --version
+          ftcsim --help
+          python - <<'PY'
+          import hashlib
+          import json
+          from importlib.metadata import version
+          from importlib.resources import files
+          import ftcsim
+
+          assert ftcsim.__version__ == version('ftcsim')
+          root = files('ftcsim')
+          for name in ('web/index.html', 'web/models/field.glb',
+                       'web/draco/draco_decoder.wasm', 'web/draco/draco_wasm_wrapper.js',
+                       'sdk/LICENSE'):
+              assert root.joinpath(name).is_file(), f'Missing bundled asset: {name}'
+          assert any(root.joinpath('templates').iterdir()), 'Missing wizard templates'
+          manifest = json.loads(root.joinpath('sdk/manifest.json').read_text())
+          assert manifest['sha256'], 'Missing SDK libraries'
+          for name, digest in manifest['sha256'].items():
+              data = root.joinpath('sdk/libs', name).read_bytes()
+              assert hashlib.sha256(data).hexdigest() == digest, f'Damaged SDK library: {name}'
+          print('CLI, wizard, Driver Station, Draco decoder, and SDK bundle verified.')
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: distributions
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'simplyrohan/ftcsim'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/ftcsim/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: distributions
+          path: dist
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          skip-existing: true
