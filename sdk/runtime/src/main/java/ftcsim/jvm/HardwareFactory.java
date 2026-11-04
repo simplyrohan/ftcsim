@@ -39,7 +39,8 @@ final class HardwareFactory implements AutoCloseable {
     }
     static void validate(JsonArray devices) {
         if (devices.size() > 256) throw new IllegalArgumentException("Too many devices");
-        Set<String> names = new HashSet<>(), ports = new HashSet<>();
+        Set<String> names = new HashSet<>();
+        Map<String, String> ports = new HashMap<>();
         for (JsonElement item : devices) {
             JsonObject d = item.getAsJsonObject();
             String name = d.get("name").getAsString(), type = d.get("type").getAsString();
@@ -47,11 +48,16 @@ final class HardwareFactory implements AutoCloseable {
             DesktopDeviceDrivers.Binding binding = DesktopDeviceDrivers.TYPES.get(type);
             if (binding == null) throw new IllegalArgumentException("Supported device types: " + DesktopDeviceDrivers.TYPES.keySet());
             if (module < 1 || module > 254 || port < 0 || port >= binding.ports) throw new IllegalArgumentException("Invalid hub address or port");
-            if (name.trim().isEmpty() || name.matches("hub[0-9]+") || !names.add(name) || !ports.add(module + ":" + binding.connection + ":" + port))
-                throw new IllegalArgumentException("Duplicate/reserved name or duplicate port: " + name);
-            if (type.equals("motor") && !ports.add(module + ":encoder:" + port))
-                throw new IllegalArgumentException("Encoder port occupied: " + name);
+            if (name.trim().isEmpty() || name.matches("hub[0-9]+") || !names.add(name))
+                throw new IllegalArgumentException("Duplicate, empty, or reserved device name: " + name);
+            claimPort(ports, module, binding.connection, port, name);
+            if (type.equals("motor")) claimPort(ports, module, "encoder", port, name);
         }
+    }
+    private static void claimPort(Map<String, String> ports, int module, String connection, int port, String name) {
+        String previous = ports.putIfAbsent(module + ":" + connection + ":" + port, name);
+        if (previous != null)
+            throw new IllegalArgumentException("Port conflict: \"" + previous + "\" and \"" + name + "\" both use Hub " + module + " " + connection + " port " + port + ".");
     }
     private static int integer(JsonObject d, String key) {
         double value = d.get(key).getAsDouble();

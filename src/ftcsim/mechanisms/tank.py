@@ -6,7 +6,7 @@ from ..drivers import BodyMotion, DCMotor
 class TankDrivetrain(Drivetrain):
     kind = 'tank'
     display_name = 'Tank drivetrain'
-    description = 'Left/right drive with optional rear motors and Pinpoint. Each side uses its average wheel speed; there is no lateral motion.'
+    description = 'Left/right drive with optional rear motors and Pinpoint/OctoQuad feedback. Each side uses its average wheel speed; there is no lateral motion.'
     WHEELS = ('left', 'right', 'rear_left', 'rear_right')
     driver_slots = {
         **{wheel: {'label': f'{wheel.replace("_", " ").capitalize()} motor' + (' (optional)' if wheel.startswith('rear_') else ''),

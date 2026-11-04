@@ -29,5 +29,13 @@ class PinpointPresenter extends DriverPresenter {
   label = 'goBILDA Pinpoint';
   rows(state:Options):Row[] { const status:Record<number,string>={1:'Ready',2:'Calibrating',4:'X pod missing',8:'Y pod missing',12:'Both pods missing'};return [['Status',status[state.status]??String(state.status)],['I²C address',`0x${Number(state.address).toString(16)}`],['X / Y',`${format(state.x_mm)} / ${format(state.y_mm)} mm`],['Heading',`${format(state.heading_rad*180/Math.PI)}°`],['Velocity X / Y',`${format(state.vx_mm_s)} / ${format(state.vy_mm_s)} mm/s`],['Yaw rate',`${format(state.yaw_rate_rad_s*180/Math.PI)}°/s`]]; }
 }
-export const driverWidgets = new Map<string,DriverPresenter>([['motor',new MotorPresenter()],['servo',new ServoPresenter()],['cr_servo',new CRServoPresenter()],['odometry',new OdometryPresenter()],['pinpoint',new PinpointPresenter()]]);
+class OctoQuadEncoderPresenter extends OdometryPresenter {
+  label = 'OctoQuad encoder / tracking wheel';
+  rows(state:Options):Row[] { return [...super.rows(state),['PWM pulse',`${format(state.pulse_width_us,1)} µs`],['Ticks / revolution',format(state.ticks_per_revolution,1)]]; }
+}
+class OctoQuadPresenter extends DriverPresenter {
+  constructor(revision:string){super();this.label=`OctoQuad ${revision}`;}
+  rows(state:Options):Row[] { return [['Firmware',state.firmware_version],['I²C address',`0x${Number(state.address).toString(16)}`],['IMU',state.has_imu?'Present':'Not fitted'],...(state.channels??[]).map((channel:Options):Row=>[`CH ${channel.port} · ${channel.name??'not connected'}`,`${format(channel.position,0)} ${channel.mode==='pwm'?'µs':'ticks'} · ${channel.sample_interval_ms} ms · ${channel.direction===-1?'Reversed':'Forward'}`])]; }
+}
+export const driverWidgets = new Map<string,DriverPresenter>([['motor',new MotorPresenter()],['servo',new ServoPresenter()],['cr_servo',new CRServoPresenter()],['odometry',new OdometryPresenter()],['pinpoint',new PinpointPresenter()],['octoquad_encoder',new OctoQuadEncoderPresenter()],['octoquad_mk1',new OctoQuadPresenter('MK1')],['octoquad_mk2',new OctoQuadPresenter('MK2')]]);
 export const fallbackWidget = new DriverPresenter();

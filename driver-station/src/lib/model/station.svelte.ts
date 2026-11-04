@@ -48,9 +48,9 @@ export class Station {
   private intervals:ReturnType<typeof setInterval>[] = [];
   get active() { return ['initialized','running'].includes(this.status); }
   get canConfigure() { return this.connected && this.controller && !['connecting','disconnected','initialized','running'].includes(this.status); }
-  get canInit() { return this.connected && this.controller && !this.active && this.hardware.ready && !this.pendingCommand && !this.startPositions.busy; }
+  get canInit() { return this.connected && this.controller && !this.active && !this.hardware.busy && !this.pendingCommand && !this.startPositions.busy; }
   get canStart() { return this.connected && this.controller && this.status === 'initialized' && !this.pendingCommand; }
-  get initReason() { return !this.connected ? 'Connect the Robot Controller to continue.' : !this.controller ? 'This tab is observing. Reconnect after the controller tab closes.' : this.active ? 'Stop this OpMode before initializing again.' : this.hardware.busy ? 'Applying the hardware map…' : !this.hardware.ready ? this.hardware.error || 'Apply your hardware map in Settings before INIT.' : this.pendingCommand ? 'Waiting for the Robot Controller…' : 'Ready to initialize.'; }
+  get initReason() { return !this.connected ? 'Connect the Robot Controller to continue.' : !this.controller ? 'This tab is observing. Reconnect after the controller tab closes.' : this.active ? 'Stop this OpMode before initializing again.' : this.hardware.busy ? 'Applying the hardware map…' : this.pendingCommand ? 'Waiting for the Robot Controller…' : this.startPositions.busy ? 'Placing the robot…' : 'Ready to initialize.'; }
   log(message:string,level:'info'|'error'='info') { this.events = [...this.events.slice(-199),{id:++this.eventId,time:new Date().toLocaleTimeString('en-US',{hour12:false}),message,level}]; }
   async mount() {
     this.destroyed = false; this.diagnostics.start();

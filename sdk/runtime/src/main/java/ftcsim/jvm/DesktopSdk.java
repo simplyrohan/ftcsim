@@ -151,7 +151,7 @@ public final class DesktopSdk implements AutoCloseable {
             }
             case "init":
                 requireInactive();
-                if (!hardwareConfigured) throw new IllegalStateException("Apply a hardware map from the Driver Station before INIT"); hardware.failsafe(); error = ""; requestedStop.set(false);
+                hardware.failsafe(); error = ""; requestedStop.set(false);
                 one = new Gamepad(); two = new Gamepad();
                 active = modes.get(selected).getDeclaredConstructor().newInstance();
                 try { DesktopLifecycle.init(active, hardware.map, this::telemetry, () -> requestedStop.set(true)); state = "initialized"; }

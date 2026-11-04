@@ -6,6 +6,7 @@ from .servo import Servo
 from .cr_servo import CRServo
 from .odometry import OdometryPod
 from .pinpoint import GoBildaPinpoint
+from .octoquad import OctoQuadEncoder, OctoQuadMK1, OctoQuadMK2
 
 
 class DriverRegistry:
@@ -31,6 +32,7 @@ class DriverRegistry:
         if cls is None:
             raise ValueError(f'Unknown driver type: {kind}')
         if parent:
+            port = str(port)
             if port not in parent.child_ports or cls.connection != parent.child_connections.get(port) or 'module' in definition:
                 raise ValueError(f'Invalid {parent.kind} child connection {port}')
         else:
@@ -75,10 +77,12 @@ class DriverRegistry:
                             'connection': cls.connection, 'ports': 6 if cls.connection == 'servo' else 4,
                             'child_ports': cls.child_ports, 'child_connections': cls.child_connections,
                             'child_defaults': cls.child_defaults, 'options': options,
+                            'default_child_ports': getattr(cls, 'default_child_ports', cls.child_ports),
+                            'default_child_type': getattr(cls, 'default_child_type', None),
                             'presets': getattr(cls, 'presets', ())})
         return catalog
 
 
 DRIVERS = DriverRegistry()
-for driver in (DCMotor, Servo, CRServo, OdometryPod, GoBildaPinpoint):
+for driver in (DCMotor, Servo, CRServo, OdometryPod, GoBildaPinpoint, OctoQuadEncoder, OctoQuadMK1, OctoQuadMK2):
     DRIVERS.register(driver)

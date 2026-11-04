@@ -3,7 +3,7 @@ type Port = number | string;
 export interface Device { name: string; type: string; module?: number; port: Port; options?: Options; children?: Device[] }
 interface Choice { value: string | number; label: string }
 export interface Option { name: string; type: string; label: string; default: any; min?: number; max?: number; choices?: (string | number | Choice)[] }
-export interface DriverType { type: string; label: string; connection: string; ports: number; child_ports: string[]; child_connections: Record<string,string>; child_defaults: Record<string,Options>; options: Option[]; presets?: { id: string; label: string; options: Options; source?: string }[] }
+export interface DriverType { type: string; label: string; connection: string; ports: number; child_ports: string[]; default_child_ports?:string[]; default_child_type?:string; child_connections: Record<string,string>; child_defaults: Record<string,Options>; options: Option[]; presets?: { id: string; label: string; options: Options; source?: string }[] }
 interface DriverSlot { name: string; label: string; types: string[]; required: boolean; children?: Record<string,{type:string; options:Options}> }
 interface MechanismVisualConfig { model?: {id:string;name:string}; position?:number[]; rotation?:number[]; scale?:number; parent?:string }
 export interface MechanismType { exclusive?:boolean; type: string; label: string; description: string; drivers: DriverSlot[]; options: Option[] }

@@ -364,7 +364,7 @@ def run(args):
         console.print('Configured TeamCodeSim. Backups:', backup)
         console.print('Sync Gradle in Android Studio. Start FTC Simulator Backend, then FTC Simulator.')
         console.print('Or use ./gradlew :TeamCodeSim:startBackend and ./gradlew runSimulator in separate terminals.')
-        console.print('Open the Driver Station Hardware map page to configure devices before INIT.')
+        console.print('Configure named devices in the Driver Station Hardware map page as needed.')
         return 0
     except (WizardError, OSError, ValueError) as error:
         console.print(f'Setup failed: {error}', style='red', markup=False)

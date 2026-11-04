@@ -10,11 +10,16 @@
   import type { Device } from '$lib/model/types';
   import type { HardwareConfiguration } from '$lib/model/hardware.svelte';
   let { device=$bindable(), hardware, parent, expanded=$bindable(false) }: {device:Device;hardware:HardwareConfiguration;parent?:Device;expanded?:boolean} = $props();
-  const Icon = $derived(device.type==='motor'||device.type==='servo'||device.type==='cr_servo'?RotateCw:device.type==='odometry'?Gauge:device.type==='pinpoint'?Compass:Cpu);
+  const Icon = $derived(device.type==='motor'||device.type==='servo'||device.type==='cr_servo'?RotateCw:device.type==='odometry'||device.type==='octoquad_encoder'?Gauge:device.type==='pinpoint'?Compass:Cpu);
   const schema = $derived(hardware.catalog.find(item=>item.type===device.type));
+  const errors = $derived(hardware.errorsFor(device));
+  let childPort=$state('');
+  const availableChildPorts=$derived(schema?.child_ports.filter(port=>!device.children?.some(child=>String(child.port)===port))??[]);
+  const selectedChildPort=$derived(availableChildPorts.includes(childPort)?childPort:availableChildPorts[0]??'');
+  function addChild(port:string){if(!schema)return;const child=hardware.catalog.find(item=>item.type===schema.default_child_type&&item.connection===schema.child_connections[port])??hardware.catalog.find(item=>item.connection===schema.child_connections[port]);if(child)hardware.add(child.type,device,port);}
   const preset = $derived(schema?.presets?.find(item=>Object.entries(item.options).every(([key,value])=>{const actual=optionValue(device.options,schema.options.find(option=>option.name===key)!);return typeof actual==='number'&&Math.abs(actual-Number(value))<1e-6;}))?.id ?? '');
 </script>
-<Collapsible.Root bind:open={expanded} class={`editor-card${parent?' nested':''}`}>
+<Collapsible.Root bind:open={expanded} class={`editor-card${parent?' nested':''}${errors.length?' configuration-invalid':''}`}>
   <div class="configuration-row">
     <span class="configuration-icon"><Icon size={17} strokeWidth={1.5}/></span>
     <div class="configuration-identity"><h3>{device.name||'Unnamed driver'}</h3><p>{schema?.label??device.type}{#if device.children?.length}<span class="summary-divider">·</span>{device.children.length} encoders{/if}</p></div>
@@ -24,6 +29,7 @@
       <Button variant="ghost" size="icon-sm" title="Remove driver" aria-label={`Remove ${device.name}`} disabled={hardware.busy} onclick={()=>hardware.remove(device,parent)}><Trash2 size={14}/></Button>
     </div>
   </div>
+  {#if errors.length}<div class="configuration-device-errors">{#each errors as error}<p>{error}</p>{/each}</div>{/if}
   <Collapsible.Content>
     <div class="editor-card-body">
       <div class="form-grid identity-grid">
@@ -46,9 +52,8 @@
         {#if schema.child_ports.length}
           <div class="child-heading"><span class="eyebrow">Connected encoders</span><span class="muted">{device.children?.length ?? 0} / {schema.child_ports.length}</span></div>
           {#each device.children ?? [] as child (child)}<DeviceEditor bind:device={device.children![device.children!.indexOf(child)]} {hardware} parent={device}/>{/each}
-          {#each schema.child_ports.filter(port=>!device.children?.some(child=>child.port===port)) as port}
-            <Button variant="outline" size="sm" disabled={hardware.busy} onclick={()=>{const child=hardware.catalog.find(item=>item.connection===schema.child_connections[port]);if(child)hardware.add(child.type,device,port);}}><Plus size={13}/>Add {port.toUpperCase()} encoder</Button>
-          {/each}
+          {#if schema.child_ports.length>2&&availableChildPorts.length}<div class="child-add"><SelectField aria-label={`${device.name} encoder channel`} value={selectedChildPort} onValueChange={next=>childPort=next} items={availableChildPorts.map(port=>({value:port,label:`Channel ${port}`}))} disabled={hardware.busy}/><Button variant="outline" size="sm" disabled={hardware.busy} onclick={()=>addChild(selectedChildPort)}><Plus size={13}/>Add encoder</Button></div>
+          {:else}{#each availableChildPorts as port}<Button variant="outline" size="sm" disabled={hardware.busy} onclick={()=>addChild(port)}><Plus size={13}/>Add {port.toUpperCase()} encoder</Button>{/each}{/if}
         {/if}
       {/if}
     </div>

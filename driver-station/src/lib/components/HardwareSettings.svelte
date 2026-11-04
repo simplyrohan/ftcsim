@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Plus, Check, LoaderCircle, Cpu, Search } from '@lucide/svelte';
+  import { Plus, Check, LoaderCircle, Cpu, Search, TriangleAlert } from '@lucide/svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import DeviceEditor from './DeviceEditor.svelte';
@@ -14,6 +14,7 @@
   function add() { const device=hardware.add(selectedType);if(device){filter='';editing=hardware.devices.find(item=>item.name===device.name);} }
 </script>
 <div class="settings-heading"><h2>Hardware map <span class="section-count">{hardware.count}</span><HelpTooltip label="About the hardware map" text={`Drivers plugged into your Control Hub. Names must match your robot code. Changes save automatically; apply the map to send them to the SDK.${hardware.notes?`\n\nFile notes\n${hardware.notes}`:''}`}/></h2></div>
+{#if hardware.issues.length}<div class="configuration-error" role="alert"><TriangleAlert size={17}/><div><strong>Invalid hardware map</strong><ul>{#each hardware.issues.slice(0,5) as issue}<li>{issue.message}</li>{/each}</ul>{#if hardware.issues.length>5}<small>{hardware.issues.length-5} more errors are marked on the affected drivers.</small>{/if}</div></div>{/if}
 <div class="configuration-toolbar">
   <label class="configuration-search"><Search size={14}/><Input type="search" aria-label="Filter hardware" placeholder="Find a driver…" bind:value={filter}/></label>
   <div class="configuration-add"><SelectField id="driver-type" aria-label="Driver type" items={hardware.catalog.map(type=>({value:type.type,label:type.label}))} bind:value={selectedType} disabled={!hardware.loaded||hardware.busy}/><Button variant="outline" disabled={!hardware.loaded||hardware.busy||station.robotConfiguration.importing} onclick={add}><Plus size={14}/>Add driver</Button></div>

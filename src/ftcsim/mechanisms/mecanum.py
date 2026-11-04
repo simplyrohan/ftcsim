@@ -7,7 +7,7 @@ from ..drivers.base import number
 class MecanumDrivetrain(Drivetrain):
     kind = 'mecanum'
     display_name = 'Mecanum drivetrain'
-    description = 'Four X-roller wheels with optional Pinpoint and two odometry pods. Motor speed and physical direction come from the hardware map.'
+    description = 'Four X-roller wheels with optional Pinpoint or OctoQuad encoder feedback. Motor speed and physical direction come from the hardware map.'
     WHEELS = ('front_left', 'front_right', 'rear_left', 'rear_right')
     driver_slots = {
         **{wheel: {'label': f'{wheel.replace("_", " ").capitalize()} motor', 'driver': DCMotor, 'required': True}

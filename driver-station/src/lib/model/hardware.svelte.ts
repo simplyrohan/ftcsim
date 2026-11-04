@@ -1,6 +1,6 @@
 import type { Station } from './station.svelte';
 import type { Device, DriverType } from './types';
-import { canonical, copy, defaults, flatten, hardwareError, topology } from './configuration';
+import { canonical, copy, defaults, flatten, hardwareIssues, topology } from './configuration';
 import { decodeHardwareMap } from './hardware-file';
 
 export class HardwareConfiguration {
@@ -15,11 +15,13 @@ export class HardwareConfiguration {
   message = $state('');
   storageError = $state('');
   loaded = $state(false);
+  issues = $derived(this.loaded ? hardwareIssues(this.devices,this.catalog) : []);
   restorePending = true;
   private key = '';
   private epoch = 0;
   constructor(private station:Station) {}
-  get error() { return this.loaded ? hardwareError(this.devices,this.catalog) : 'Loading driver catalog…'; }
+  get error() { return this.loaded ? this.issues[0]?.message??'' : 'Loading driver catalog…'; }
+  errorsFor(device:Device) { return this.issues.filter(issue=>issue.devices.includes(device)).map(issue=>issue.message); }
   get sdkSynchronized() { return this.hasDraft && this.configured && canonical(this.devices) === canonical(this.remote); }
   get synchronized() { return this.sdkSynchronized && this.station.physical?.connected === true && topology(this.devices) === topology(this.station.physical.devices); }
   get ready() { return this.loaded && this.synchronized && !this.busy && !this.error; }
@@ -47,13 +49,15 @@ export class HardwareConfiguration {
     const options = defaults(schema);
     if (parent) {
       Object.assign(options,this.catalog.find(item => item.type === parent.type)?.child_defaults[port!] ?? {});
-      const device = {name,type,port:port!,options}; (parent.children ??= []).push(device); this.save(); return device;
+      const device = {name,type,port:port!,options};
+      parent.children ??= []; parent.children.push(device); this.save(); return parent.children[parent.children.length-1];
     }
     const used = (candidate:number) => this.devices.some(device => device.module === 1 && device.port === candidate && (this.catalog.find(item => item.type === device.type)?.connection === schema.connection || ['motor','encoder'].includes(schema.connection) && ['motor','encoder'].includes(this.catalog.find(item => item.type === device.type)?.connection ?? '')));
     const device:Device = {name,type,module:1,port:Array.from({length:schema.ports},(_,i)=>i).find(port => !used(port)) ?? 0,options};
     this.devices.push(device);
-    for (const port of schema.child_ports) { const child = this.catalog.find(item => item.connection === schema.child_connections[port]); if (child) this.add(child.type,device,port); }
-    this.save(); return device;
+    const added=this.devices[this.devices.length-1];
+    for (const port of schema.default_child_ports??schema.child_ports) { const child = this.catalog.find(item=>item.type===schema.default_child_type&&item.connection===schema.child_connections[port])??this.catalog.find(item => item.connection === schema.child_connections[port]); if (child) this.add(child.type,added,port); }
+    this.save(); return added;
   }
   async remove(device:Device,parent?:Device) {
     const epoch=this.epoch,list=parent?.children??this.devices;
