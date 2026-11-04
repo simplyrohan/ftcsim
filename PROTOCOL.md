@@ -190,6 +190,36 @@ Power is linear from -1 to 1 around the pulse-range midpoint. Snapshots report
 and `shaft_rpm`; no encoder is exposed to TeamCode. Disabling PWM or a failsafe
 stops rotation and preserves shaft position.
 
+`octoquad_mk1` and `octoquad_mk2` create SDK `OctoQuadImpl` devices at I²C
+address `0x30`, emulating firmware 3.1.0. Both accept encoder children on inputs
+`"0"`–`"7"`; the catalog supplies `default_child_ports` and `default_child_type`
+for the editor. MK1 has no IMU and reports localizer status `FAULT_NO_IMU`.
+MK2 starts `NOT_INITIALIZED`; TeamCode must reset/calibrate its localizer.
+Physical field placement never changes its sensor coordinate origin.
+
+`octoquad_encoder` extends the odometry-pod model with physical
+`ticks_per_revolution` (default 2000), `min_pulse_us` (1), and `max_pulse_us`
+(1024). It provides quadrature counts and an absolute PWM signal. Unconnected
+channels read zero. Firmware bank mode, direction, sampling intervals, PWM
+limits/wrap tracking, count resets, parameter flash snapshots, and bulk CRCs
+follow the [OctoQuad v3 protocol](https://github.com/DigitalChickenLabs/OctoQuad/blob/master/documentation/OctoQuadDatasheet_Rev_3.0C.pdf).
+Encoder velocity registers contain counts (or µs) **per configured sample
+interval**, while DS channel snapshots also expose `velocity_ticks_s`.
+
+MK2 initial parameter options are `x_port`/`y_port` (0/1),
+`x_ticks_per_mm`/`y_ticks_per_mm` (13.26291192),
+`tcp_offset_x_mm`/`tcp_offset_y_mm` (0), and `imu_heading_scalar` (1).
+They remain independently configurable through the SDK; localizer parameter
+writes take effect on reset/calibration. Pose registers use signed 16-bit mm,
+heading ×5000, and angular velocity ×600; encoder counts use signed 32-bit
+wrapping. The simulator supplies ideal planar yaw and accelerates calibration
+to 0.3 seconds. Flash snapshots survive `power_cycle()` within the device model;
+recreating the hardware map creates fresh devices.
+
+Port-conflict errors identify both devices and their hub/input. Motor and
+standalone encoder inputs share the hub's encoder-port space; positional and
+continuous servos share its servo-port space. Each child input is exclusive.
+
 ## Mechanism definitions
 
 ```json
@@ -212,6 +242,9 @@ contract. Required driver slots are `left` and `right`; `rear_left` and
 average; forward speed is `(left + right) / 2`, lateral speed is zero, and yaw
 rate is `(right - left) / track_width_mm`. `wheelbase_mm` sets visual length.
 Each motor slot has a corresponding `<slot>_direction` option (1 or -1).
+Both drivetrains also accept an optional `octoquad` binding (MK1 or MK2), driving
+all connected encoders and the MK2 IMU. Pinpoint and OctoQuad can be connected
+simultaneously. Mechanisms remain invisible to TeamCode.
 
 ```json
 {"name":"drivebase","type":"tank","drivers":{"left":"left_drive","right":"right_drive"},"options":{"wheel_diameter_mm":96,"track_width_mm":402}}

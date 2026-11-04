@@ -12,7 +12,7 @@
   <Collapsible.Trigger class="scene-feedback-trigger">Wheel &amp; encoder feedback<ChevronDown size={13}/></Collapsible.Trigger>
   <Collapsible.Content>
   <div class="wheel-readouts">{#each Object.entries(state.wheel_speeds_mm_s) as [name,value]}<div><span>{name.replaceAll('_',' ')}</span><strong>{format(value,1)}<small>mm/s</small></strong></div>{/each}</div>
-  {#if state.encoder_states?.length}<div class="tracking-encoders" aria-label="Drivetrain encoder feedback">{#each state.encoder_states as encoder (encoder.name)}<div><span>{encoder.port.toUpperCase()} · {encoder.name}</span><strong>{format(encoder.ticks,0)}<small>ticks</small></strong><span>{format(encoder.velocity,1)} ticks/s · {format(encoder.distance_mm,1)} mm</span></div>{/each}</div>{/if}
-  <div class="mechanism-caption"><span>{state.pinpoint?`${state.pinpoint} · ${state.encoders.join(' / ')}`:'No Pinpoint linked · odometry is not driven by this mechanism'}</span></div>
+  {#if state.encoder_states?.length}<div class="tracking-encoders" aria-label="Drivetrain encoder feedback">{#each state.encoder_states as encoder (encoder.name)}<div><span>{String(encoder.port).toUpperCase()} · {encoder.name}</span><strong>{format(encoder.ticks,0)}<small>ticks</small></strong><span>{format(encoder.velocity,1)} ticks/s · {format(encoder.distance_mm,1)} mm</span></div>{/each}</div>{/if}
+  <div class="mechanism-caption"><span>{state.pinpoint||state.octoquad?`${[state.pinpoint,state.octoquad].filter(Boolean).join(' + ')} · ${state.encoders.join(' / ')}`:'No odometry hub linked'}</span></div>
   </Collapsible.Content>
 </Collapsible.Root>

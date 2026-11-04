@@ -2,7 +2,7 @@
 import math
 from abc import abstractmethod
 from .base import Mechanism, Pose2D
-from ..drivers import DCMotor, GoBildaPinpoint, OdometryPod
+from ..drivers import DCMotor, GoBildaPinpoint, OdometryPod, OctoQuad
 from ..drivers.base import number
 
 
@@ -17,6 +17,7 @@ class Drivetrain(Mechanism):
     driver_slots = {
         'pinpoint': {'label': 'Pinpoint with X/Y pods (optional)', 'driver': GoBildaPinpoint, 'required': False,
                      'children': {axis: {'type': 'odometry', 'options': {'axis': axis}} for axis in ('x', 'y')}},
+        'octoquad': {'label': 'OctoQuad encoder hub / MK2 localizer (optional)', 'driver': OctoQuad, 'required': False},
     }
     option_metadata = {
         'wheel_diameter_mm': {'label': 'Wheel diameter (mm)', 'min': 0.01},
@@ -36,6 +37,8 @@ class Drivetrain(Mechanism):
             raise ValueError('Motor mounting directions must be 1 or -1')
         self.motors = {role: driver for role, driver in drivers.items() if isinstance(driver, DCMotor)}
         self.pinpoint = drivers.get('pinpoint')
+        self.octoquad = drivers.get('octoquad')
+        self.sensors = [sensor for sensor in (self.pinpoint, self.octoquad) if sensor]
         if self.pinpoint:
             for axis in ('x', 'y'):
                 pod = self.pinpoint.children.get(axis)
@@ -46,7 +49,7 @@ class Drivetrain(Mechanism):
 
     @property
     def consumed_drivers(self):
-        return (*super().consumed_drivers, *(self.pinpoint.children.values() if self.pinpoint else ()))
+        return (*super().consumed_drivers, *(child for sensor in self.sensors for child in sensor.children.values()))
 
     def advance(self, dt):
         self.wheel_speeds = {role: motor.shaft_revolutions_per_second * self.wheel_circumference /
@@ -59,7 +62,7 @@ class Drivetrain(Mechanism):
         raise NotImplementedError
 
     def sensor_inputs(self):
-        return {self.pinpoint: self.motion} if self.pinpoint else {}
+        return {sensor: self.motion for sensor in self.sensors}
 
     def place(self, x_mm, y_mm, heading_deg):
         """Place the chassis without changing encoder or IMU coordinates."""
@@ -80,7 +83,7 @@ class Drivetrain(Mechanism):
                              'yaw_rate_rad_s': self.motion.angular_velocity},
                 'wheel_speeds_mm_s': self.wheel_speeds,
                 'pinpoint': self.pinpoint.name if self.pinpoint else None,
-                'encoders': [pod.name for pod in self.pinpoint.children.values()] if self.pinpoint else [],
-                'encoder_states': [{'name': self.pinpoint.children[axis].name, 'port': axis,
-                                    **self.pinpoint.children[axis].state()}
-                                   for axis in ('x', 'y')] if self.pinpoint else []}
+                'octoquad': self.octoquad.name if self.octoquad else None,
+                'encoders': [pod.name for sensor in self.sensors for pod in sensor.children.values()],
+                'encoder_states': [{'name': pod.name, 'port': port, **pod.state()}
+                                   for sensor in self.sensors for port, pod in sensor.children.items()]}

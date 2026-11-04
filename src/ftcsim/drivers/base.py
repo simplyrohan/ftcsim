@@ -33,8 +33,10 @@ class Driver:
         self.children = {}
 
     def attach(self, port, child):
-        if port not in self.child_ports or port in self.children:
-            raise ValueError(f'{self.name}: invalid or occupied child port {port}')
+        if port not in self.child_ports:
+            raise ValueError(f'{self.name}: invalid child port {port}')
+        if port in self.children:
+            raise ValueError(f'Port conflict: "{self.children[port].name}" and "{child.name}" both use {self.name} input {port}.')
         if child.connection != self.child_connections.get(port):
             raise ValueError(f'{self.name}: incompatible child on {port}')
         self.children[port] = child

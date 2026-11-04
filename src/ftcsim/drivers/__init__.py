@@ -7,7 +7,8 @@ from .cr_servo import CRServo
 from .odometry import OdometryPod
 from .i2c import I2CDriver
 from .pinpoint import GoBildaPinpoint
+from .octoquad import OctoQuad, OctoQuadEncoder, OctoQuadMK1, OctoQuadMK2
 from .registry import DRIVERS, DriverRegistry
 
 __all__ = ['BodyMotion', 'Driver', 'Encoder', 'DCMotor', 'Servo', 'CRServo', 'OdometryPod',
-           'I2CDriver', 'GoBildaPinpoint', 'DRIVERS', 'DriverRegistry']
+           'I2CDriver', 'GoBildaPinpoint', 'OctoQuad', 'OctoQuadEncoder', 'OctoQuadMK1', 'OctoQuadMK2', 'DRIVERS', 'DriverRegistry']

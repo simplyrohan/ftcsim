@@ -6,7 +6,7 @@ export const defaults = (schema:{options:Option[]}) => Object.fromEntries(schema
 export const optionValue = (options:Record<string,any>|undefined, option:Option) => options && option.name in options ? options[option.name] : option.default;
 export const choiceValue = (choice:any) => typeof choice === 'object' ? choice.value : choice;
 export const choiceLabel = (choice:any) => typeof choice === 'object' ? choice.label : String(choice);
-export const topology = (devices:(Device|DeviceState)[]):string => canonical(devices.map(({name,type,module,port,children=[]}) => canonical({name,type,module,port,children:topology(children)})).sort());
+export const topology = (devices:(Device|DeviceState)[]):string => canonical(devices.map(({name,type,module,port,children=[]}) => canonical({name,type,module,port:module===undefined?String(port):port,children:topology(children)})).sort());
 function optionError(options:Record<string,any> = {}, schema:Option[]):string {
   if (Object.keys(options).some(key => !schema.some(option => option.name === key))) return 'Unknown configuration option.';
   for (const option of schema) {
@@ -18,41 +18,51 @@ function optionError(options:Record<string,any> = {}, schema:Option[]):string {
   }
   return '';
 }
-export function hardwareError(devices:Device[], catalog:DriverType[]):string {
-  if (devices.length > 256) return 'A hardware map can contain at most 256 hub devices.';
-  const names = new Set<string>(), occupied = new Set<string>();
-  function visit(device:Device, parent?:Device):string {
-    const schema = catalog.find(type => type.type === device.type);
-    if (!schema) return `Unknown driver type: ${device.type}.`;
-    if (typeof device.name !== 'string' || !device.name.trim()) return 'Every driver needs a name.';
-    if (names.has(device.name) || /^hub\d+$/.test(device.name)) return `Duplicate or reserved name: ${device.name}.`;
-    names.add(device.name);
-    if (parent) {
-      const owner = catalog.find(type => type.type === parent.type)!;
-      if (!owner.child_ports.includes(String(device.port)) || schema.connection !== owner.child_connections[device.port] || device.module !== undefined) return `${device.name}: invalid child connection.`;
+export interface HardwareIssue { message:string; devices:Device[] }
+export function hardwareIssues(devices:Device[], catalog:DriverType[]):HardwareIssue[] {
+  const issues:HardwareIssue[]=[],names=new Map<string,Device>(),occupied=new Map<string,Device>();
+  const report=(message:string,...devices:Device[])=>issues.push({message,devices});
+  if(devices.length>256)report('A hardware map can contain at most 256 hub devices.');
+  function visit(device:Device,parent?:Device) {
+    const schema=catalog.find(type=>type.type===device.type);
+    if(!schema){report(`Unknown driver type: ${device.type}.`,device);return;}
+    if(typeof device.name!=='string'||!device.name.trim())report('Every driver needs a name.',device);
+    else {
+      const previous=names.get(device.name);
+      if(previous)report(`Duplicate device name: “${device.name}”. Choose a unique name for each driver.`,previous,device);
+      else if(/^hub\d+$/.test(device.name))report(`“${device.name}” is reserved for the simulator hub.`,device);
+      names.set(device.name,device);
+    }
+    if(parent) {
+      const owner=catalog.find(type=>type.type===parent.type)!;
+      if(!owner.child_ports.includes(String(device.port))||schema.connection!==owner.child_connections[device.port]||device.module!==undefined)report(`${device.name}: invalid child connection.`,device,parent);
     } else {
-      if (!Number.isInteger(device.module) || device.module! < 1 || device.module! > 254) return `${device.name}: hub address must be 1–254.`;
-      if (!Number.isInteger(device.port) || Number(device.port) < 0 || Number(device.port) >= schema.ports) return `${device.name}: invalid port.`;
-      for (const space of schema.connection === 'motor' ? ['motor','encoder'] : [schema.connection]) {
-        const key = `${device.module}:${space}:${device.port}`;
-        if (occupied.has(key)) return `${device.name}: hub ${device.module} ${space} port ${device.port} is occupied.`;
-        occupied.add(key);
+      if(!Number.isInteger(device.module)||device.module!<1||device.module!>254)report(`${device.name}: hub address must be 1–254.`,device);
+      if(!Number.isInteger(device.port)||Number(device.port)<0||Number(device.port)>=schema.ports)report(`${device.name}: invalid ${schema.connection} port.`,device);
+      for(const space of schema.connection==='motor'?['motor','encoder']:[schema.connection]) {
+        const key=`${device.module}:${space}:${device.port}`,previous=occupied.get(key);
+        if(previous) {
+          // A pair of motors already conflicts on the motor port.
+          if(space!=='encoder'||previous.type!=='motor'||device.type!=='motor')report(`Port conflict: “${previous.name}” and “${device.name}” both use Hub ${device.module} ${space} port ${device.port}.`,previous,device);
+        } else occupied.set(key,device);
       }
     }
-    const error = optionError(device.options, schema.options);
-    if (error) return `${device.name}: ${error}`;
-    if (schema.connection === 'servo' && (device.options?.max_pulse_us ?? schema.options.find(option=>option.name==='max_pulse_us')?.default) <= (device.options?.min_pulse_us ?? schema.options.find(option=>option.name==='min_pulse_us')?.default)) return `${device.name}: maximum pulse must exceed minimum pulse.`;
-    const childPorts = new Set();
-    for (const child of device.children ?? []) {
-      if (childPorts.has(child.port)) return `${device.name}: duplicate child input ${child.port}.`;
-      childPorts.add(child.port);
-      const error = visit(child,device); if (error) return error;
+    const error=optionError(device.options,schema.options);
+    if(error)report(`${device.name}: ${error}`,device);
+    if((schema.connection==='servo'||device.type==='octoquad_encoder')&&(device.options?.max_pulse_us??schema.options.find(option=>option.name==='max_pulse_us')?.default)<=(device.options?.min_pulse_us??schema.options.find(option=>option.name==='min_pulse_us')?.default))report(`${device.name}: maximum pulse must exceed minimum pulse.`,device);
+    if(device.type==='octoquad_mk2'&&(device.options?.x_port??0)===(device.options?.y_port??1))report(`${device.name}: localizer X and Y must use different encoder channels.`,device);
+    const childPorts=new Map<string,Device>();
+    for(const child of device.children??[]) {
+      const port=String(child.port),previous=childPorts.get(port);
+      if(previous)report(`Port conflict: “${previous.name}” and “${child.name}” both use ${device.name} input ${port}.`,device,previous,child);
+      else childPorts.set(port,child);
+      visit(child,device);
     }
-    return '';
   }
-  for (const device of devices) { const error = visit(device); if (error) return error; }
-  return '';
+  for(const device of devices)visit(device);
+  return issues;
 }
+export function hardwareError(devices:Device[],catalog:DriverType[]):string { return hardwareIssues(devices,catalog)[0]?.message??''; }
 export function mechanismError(definitions:Mechanism[], catalog:MechanismType[], devices:Device[]):string {
   const drivers = flatten(devices), claimed = new Set<string>(), names = new Set<string>();
   if (definitions.length > 64) return 'At most 64 mechanisms may be configured.';

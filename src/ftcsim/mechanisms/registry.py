@@ -1,5 +1,6 @@
 """Built-in mechanism catalog, driver binding, and exclusive resource validation."""
 import inspect
+from ..drivers import DRIVERS
 from .base import Mechanism
 from .mecanum import MecanumDrivetrain
 from .tank import TankDrivetrain
@@ -69,7 +70,7 @@ class MechanismRegistry:
                           'type': 'number' if isinstance(parameter.default, (int, float)) else 'text'}
                 option.update(cls.option_metadata.get(name, {}))
                 options.append(option)
-            slots = [{'name': name, 'label': spec['label'], 'types': [driver.kind for driver in (spec['driver'] if isinstance(spec['driver'], tuple) else (spec['driver'],))], 'required': spec['required'],
+            slots = [{'name': name, 'label': spec['label'], 'types': [driver.kind for driver in DRIVERS.types.values() if issubclass(driver, spec['driver'])], 'required': spec['required'],
                       'children': spec.get('children', {})}
                      for name, spec in cls.driver_slots.items()]
             result.append({'type': kind, 'label': cls.display_name, 'description': getattr(cls, 'description', ''),

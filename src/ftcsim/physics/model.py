@@ -18,16 +18,17 @@ class Hub(HubState):
         self.encoder_inputs = list(self.motors)
         self.buses = [I2CBus() for _ in range(4)]
         self.devices = []
-        self.connections = set()
+        self.connections = {}
 
     def attach(self, device):
         connection, port = device.connection, device.port
-        slots = {(connection, port)}
+        slots = [(connection, port)]
         if isinstance(device, DCMotor):
-            slots.add(('encoder', port))
-        if slots & self.connections:
-            raise ValueError(f'Hub {self.address}: occupied {connection} port {port}')
-        self.connections.update(slots)
+            slots.append(('encoder', port))
+        for slot in slots:
+            if slot in self.connections:
+                raise ValueError(f'Port conflict: "{self.connections[slot]}" and "{device.name}" both use Hub {self.address} {slot[0]} port {port}.')
+        self.connections.update({slot: device.name for slot in slots})
         if isinstance(device, DCMotor):
             self.motors[port] = device
             self.encoder_inputs[port] = device
