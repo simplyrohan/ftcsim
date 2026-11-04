@@ -1,15 +1,17 @@
+import { isDrivetrain } from '$lib/model/mechanism-types';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { createGLTFLoader } from './gltf';
 import { loadModel, validateGLB } from '$lib/model/model-assets';
 import type { Mechanism, MechanismState } from '$lib/model/types';
-import { MecanumVisual, disposeObject, type MechanismVisual } from './mecanum';
+import { DrivebaseVisual, disposeObject, type MechanismVisual } from './drivetrain';
 
 export async function parseModel(data:ArrayBuffer) {
   validateGLB(data);
   const manager=new THREE.LoadingManager();
   manager.setURLModifier(url=>{if(!url.startsWith('blob:') && !url.startsWith('data:'))throw Error('The GLB contains an external resource. Embed textures and buffers before uploading.');return url;});
-  return (await new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder).parseAsync(data,'')).scene;
+  const {loader,decoder}=createGLTFLoader(manager);
+  try {return (await loader.parseAsync(data,'')).scene;}
+  finally {decoder.dispose();}
 }
 const axisVectors={x:new THREE.Vector3(1,0,0),y:new THREE.Vector3(0,0,-1),z:new THREE.Vector3(0,1,0)};
 const basis=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2);
@@ -28,7 +30,7 @@ export class UploadedVisual implements MechanismVisual {
   private displayed=0;
   private initialized=false;
   private disposed=false;
-  private procedural?:MecanumVisual;
+  private procedural?:DrivebaseVisual;
   private model?:THREE.Group;
   private modelScale=new THREE.Vector3(1,1,1);
   constructor(private definition:Mechanism, onError:(message:string)=>void, onLoading:(loading:boolean)=>void=()=>{}) {
@@ -41,7 +43,7 @@ export class UploadedVisual implements MechanismVisual {
       model.traverse(node=>{node.updateMatrix();node.matrixAutoUpdate=false;});
       this.model=model;this.modelScale.copy(model.scale);this.applyScale();this.origin.add(model);
     }).catch(error=>{if(!this.disposed)onError(`${definition.name}: ${error instanceof Error?error.message:error}`);}).finally(()=>{if(!this.disposed)onLoading(false);});}
-    else if(definition.type==='mecanum'){this.procedural=new MecanumVisual(definition.options);this.origin.add(this.procedural.object);}
+    else if(isDrivetrain(definition.type)){this.procedural=new DrivebaseVisual(definition.options,definition.type);this.origin.add(this.procedural.object);}
     else {
       const marker=new THREE.AxesHelper(.15);this.origin.add(marker);
       const pivot=new THREE.Mesh(new THREE.SphereGeometry(.012,12,8),new THREE.MeshStandardMaterial({color:0xa9ccf2}));this.origin.add(pivot);
@@ -57,7 +59,7 @@ export class UploadedVisual implements MechanismVisual {
   }
   private applyScale(){const value=this.definition.visual?.scale,scale=typeof value==='number' && Number.isFinite(value) && value>0?value:1;if(this.model){this.model.scale.copy(this.modelScale).multiplyScalar(scale);this.model.updateMatrix();}if(this.procedural)this.procedural.object.scale.setScalar(scale);}
   update(mechanism:MechanismState) {
-    if(this.definition.type==='mecanum'){
+    if(isDrivetrain(this.definition.type)){
       const pose=mechanism.state.pose;
       if(pose && [pose.x_mm,pose.y_mm,pose.heading_rad].every(Number.isFinite)){
         this.target.set(pose.x_mm/1000,0,-pose.y_mm/1000);this.heading=pose.heading_rad;
@@ -70,7 +72,7 @@ export class UploadedVisual implements MechanismVisual {
   animate(dt:number,smooth:boolean) {
     this.procedural?.animate(dt,smooth);
     const blend=smooth?1-Math.exp(-dt*18):1;
-    if(this.definition.type==='mecanum'){
+    if(isDrivetrain(this.definition.type)){
       this.object.position.lerp(this.target,blend);
       const delta=this.heading-this.object.rotation.y;this.object.rotation.y+=Math.atan2(Math.sin(delta),Math.cos(delta))*blend;
     } else {

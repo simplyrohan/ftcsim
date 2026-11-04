@@ -2,6 +2,7 @@
 import inspect
 from .base import Mechanism
 from .mecanum import MecanumDrivetrain
+from .tank import TankDrivetrain
 from .custom import CustomMechanism
 
 
@@ -78,5 +79,5 @@ class MechanismRegistry:
 
 MECHANISMS = MechanismRegistry()
 MECHANISMS.register(MecanumDrivetrain)
-
+MECHANISMS.register(TankDrivetrain)
 MECHANISMS.register(CustomMechanism)

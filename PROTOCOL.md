@@ -180,6 +180,15 @@ is 1 or -1 and is independent of SDK motor direction. Pod `offset_mm`,
 resolution and offsets configure its estimator independently of physical pods.
 Legacy `max_ticks_per_second` motor values are converted to RPM when read.
 
+`servo` creates an SDK `ServoImplEx`; `cr_servo` creates `CRServoImplEx` and
+uses the same servo-port/PWM protocol. They cannot share one physical port.
+CR servo options add `max_rpm` (default 60) and physical `direction` (1 or -1).
+Its default pulse range is 600–2400 µs, matching the SDK's standard range.
+Power is linear from -1 to 1 around the pulse-range midpoint. Snapshots report
+`position` in accumulated shaft revolutions, `velocity` in revolutions/second,
+and `shaft_rpm`; no encoder is exposed to TeamCode. Disabling PWM or a failsafe
+stops rotation and preserves shaft position.
+
 ## Mechanism definitions
 
 ```json
@@ -196,6 +205,17 @@ turn. Mounting directions multiply physical motor directions. Optional `pinpoint
 binds its existing X/Y pods. Pose uses `x_mm`, `y_mm`, and `heading_rad`; velocity
 uses forward/left mm/s and counterclockwise rad/s.
 
+`tank` uses the same dimensions, gearing, pose, sensor binding, and placement
+contract. Required driver slots are `left` and `right`; `rear_left` and
+`rear_right` are optional additional motors. Each side's speed is its motors'
+average; forward speed is `(left + right) / 2`, lateral speed is zero, and yaw
+rate is `(right - left) / track_width_mm`. `wheelbase_mm` sets visual length.
+Each motor slot has a corresponding `<slot>_direction` option (1 or -1).
+
+```json
+{"name":"drivebase","type":"tank","drivers":{"left":"left_drive","right":"right_drive"},"options":{"wheel_diameter_mm":96,"track_width_mm":402}}
+```
+
 Custom mechanisms optionally bind one motor or servo through `drivers.actuator`.
 They observe inputs without changing drivers or driving sensors. Their options
 are `motion` (`rotation` or `translation`), `axis` (`x`, `y`, or `z`), `direction`
@@ -205,7 +225,8 @@ are `motion` (`rotation` or `translation`), `axis` (`x`, `y`, or `z`), `directio
 displacement = (input - input_zero) * travel * direction
 ```
 
-Motor input is signed physical shaft revolutions; servo input is normalized 0–1.
+Motor and CR servo input is signed physical shaft revolutions; positional servo
+input is normalized 0–1.
 `travel` is degrees for rotation or millimeters for translation per input unit.
 
 ## Robot archive: `.fs`
@@ -244,13 +265,14 @@ Imports assign fresh IDs to avoid overwriting existing browser assets.
 
 Archive and validation limits:
 
-- 64 MiB compressed and expanded, at most 130 ZIP entries.
-- `robot.json`: 1 MiB; each GLB: 20 MiB; at most 64 asset-map entries.
+- 512 MiB compressed and expanded, at most 130 ZIP entries.
+- `robot.json`: 1 MiB; each GLB: 200 MiB; at most 64 asset-map entries.
 - Stored and deflate ZIP compression are supported.
 - Duplicate paths, absolute paths, backslashes, NULs, and empty/`.`/`..` segments
   are rejected. Unused safe entries are ignored but count toward limits.
 - Models must be self-contained binary glTF 2.0. Embedded buffers/textures and
-  Meshopt compression are supported; required Draco or KTX2 extensions are rejected.
+  Draco and Meshopt geometry compression are supported; required KTX2 extensions
+  are rejected. Draco decoding uses bundled local assets.
 - Hardware trees contain at most 256 root devices, 1,024 devices total, and eight
   child nesting levels.
 

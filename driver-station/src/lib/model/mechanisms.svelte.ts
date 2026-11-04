@@ -1,3 +1,4 @@
+import { isDrivetrain } from './mechanism-types';
 import type { Station } from './station.svelte';
 import type { Mechanism, MechanismType } from './types';
 import { canonical, copy, defaults, mechanismError, mechanismPhysics } from './configuration';
@@ -45,7 +46,7 @@ export class MechanismConfiguration {
   add(type:string) {
     const schema = this.catalog.find(item => item.type === type); if (!schema || this.definitions.length >= 64) return;
     let name = type, suffix = 2; while (this.definitions.some(item => item.name === name)) name = `${type}${suffix++}`;
-    this.definitions.push({name,type,drivers:{},options:defaults(schema),...(type==='custom'?{visual:{parent:this.definitions.find(item=>item.type==='mecanum')?.name??''}}:{})}); this.save();
+    this.definitions.push({name,type,drivers:{},options:defaults(schema),...(type==='custom'?{visual:{parent:this.definitions.find(item=>isDrivetrain(item.type))?.name??''}}:{})}); this.save();
   }
   async remove(definition:Mechanism) {
     const epoch=this.epoch;

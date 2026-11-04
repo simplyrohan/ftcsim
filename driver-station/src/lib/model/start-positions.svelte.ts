@@ -1,3 +1,4 @@
+import { isDrivetrain } from './mechanism-types';
 import type { Station } from './station.svelte';
 
 interface StartPose { x_mm:number; y_mm:number; heading_deg:number }
@@ -15,7 +16,7 @@ export class StartPositions {
   private storageKey='';
   constructor(private station:Station){}
   get current():ModeStart{return this.modes[this.station.selected]??empty();}
-  get drivetrains(){return this.station.physical?.mechanisms.filter(item=>item.type==='mecanum')??[];}
+  get drivetrains(){return this.station.physical?.mechanisms.filter(item=>isDrivetrain(item.type))??[];}
   get target(){return this.current.mechanism||this.drivetrains[0]?.name||'';}
   get editable(){return !this.station.active&&!this.station.pendingCommand&&!this.busy&&!!this.station.selected;}
   load(endpoint:string){

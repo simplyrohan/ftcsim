@@ -26,6 +26,8 @@ final class DesktopDeviceDrivers {
         TYPES.put("odometry", new Binding("encoder", 4, (context, hub, port, motors, servos) -> new DcMotorImplEx(motors, port)));
         TYPES.put("servo", new Binding("servo", 6, (context, hub, port, motors, servos) ->
                 new ServoImplEx(servos, port, ConfigurationTypeManager.getInstance().getStandardServoType())));
+        TYPES.put("cr_servo", new Binding("servo", 6, (context, hub, port, motors, servos) ->
+                new CRServoImplEx(servos, port, ConfigurationTypeManager.getInstance().getStandardServoType())));
         TYPES.put("pinpoint", new Binding("i2c", 4, (context, hub, port, motors, servos) -> {
             LynxI2cDeviceSynch client = new LynxI2cDeviceSynchV2(context, hub, port);
             GoBildaPinpointDriver device = new GoBildaPinpointDriver(client, true);

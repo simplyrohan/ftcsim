@@ -1,17 +1,16 @@
 import { base } from '$app/paths';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { createGLTFLoader } from './gltf';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { disposeObject } from './mecanum';
+import { disposeObject } from './drivetrain';
 
 /** Bundled field is in metres, X/Y on the mat and Z up. */
 export async function loadField() {
-  const decoder=new DRACOLoader().setDecoderPath(`${base}/draco/`).setWorkerLimit(2);
+  const {loader,decoder}=createGLTFLoader();
   let source:THREE.Group|undefined;
   const field=new THREE.Group();field.name='FTC field';
   try {
-    source=(await new GLTFLoader().setDRACOLoader(decoder).loadAsync(`${base}/models/field.glb`)).scene;
+    source=(await loader.loadAsync(`${base}/models/field.glb`)).scene;
     source.rotation.x=-Math.PI/2;source.updateMatrixWorld(true);
     const mat=new THREE.Box3();
     source.traverse(node=>{if(node.name.includes('Soft_Tiles')||node.name.includes('Soft Tiles'))mat.union(new THREE.Box3().setFromObject(node));});

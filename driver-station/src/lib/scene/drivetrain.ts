@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { MechanismState, Options } from '$lib/model/types';
+import type { DrivetrainType } from '$lib/model/mechanism-types';
 
 export interface MechanismVisual {
   object:THREE.Group;
@@ -25,8 +26,8 @@ export function disposeObject(object:THREE.Object3D) {
   object.removeFromParent();
 }
 
-/** A generic mecanum chassis. FTC +X/+Y maps to Three.js +X/-Z, with +Y up. */
-export class MecanumVisual implements MechanismVisual {
+/** Shared chassis; FTC +X/+Y maps to Three.js +X/-Z, with +Y up. */
+export class DrivebaseVisual implements MechanismVisual {
   object = new THREE.Group();
   private target = new THREE.Vector3();
   private heading = 0;
@@ -35,7 +36,7 @@ export class MecanumVisual implements MechanismVisual {
   private speeds:Record<string,number> = {};
   private radius:number;
 
-  constructor(options:Options = {}) {
+  constructor(options:Options = {},private kind:DrivetrainType='mecanum') {
     const length = (options.wheelbase_mm ?? 360)/1000;
     const width = (options.track_width_mm ?? 360)/1000;
     this.radius = (options.wheel_diameter_mm ?? 96)/2000;
@@ -69,17 +70,26 @@ export class MecanumVisual implements MechanismVisual {
     ] as const;
     for (const [name,x,z,handedness] of placements) {
       const wheel = new THREE.Group();wheel.name=name;wheel.position.set(x,this.radius,z);
-      const tire = new THREE.Mesh(new THREE.CylinderGeometry(this.radius*.88,this.radius*.88,.044,24),rubber);
+      const radius=this.radius*(kind==='mecanum'?.88:1);
+      const tire = new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,.044,24),rubber);
       tire.rotation.x=Math.PI/2;wheel.add(tire);
       const hub = new THREE.Mesh(new THREE.CylinderGeometry(this.radius*.46,this.radius*.46,.047,16),metal);
       hub.rotation.x=Math.PI/2;wheel.add(hub);
-      const rollerGeometry = new THREE.CylinderGeometry(this.radius*.16,this.radius*.16,.046,8);
-      for (let i=0;i<8;i++) {
-        const angle=i*Math.PI/4;
-        const roller=new THREE.Mesh(rollerGeometry,frame);
-        roller.position.set(Math.cos(angle)*this.radius*.86,Math.sin(angle)*this.radius*.86,0);
-        roller.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(-Math.sin(angle),Math.cos(angle),handedness*.9).normalize());
-        wheel.add(roller);
+      if(kind==='mecanum'){
+        const rollerGeometry = new THREE.CylinderGeometry(this.radius*.16,this.radius*.16,.046,8);
+        for (let i=0;i<8;i++) {
+          const angle=i*Math.PI/4;
+          const roller=new THREE.Mesh(rollerGeometry,frame);
+          roller.position.set(Math.cos(angle)*this.radius*.86,Math.sin(angle)*this.radius*.86,0);
+          roller.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(-Math.sin(angle),Math.cos(angle),handedness*.9).normalize());
+          wheel.add(roller);
+        }
+      }else{
+        const treadGeometry=new THREE.BoxGeometry(.012,.006,.048);
+        for(let i=0;i<12;i++){
+          const angle=i*Math.PI/6,tread=new THREE.Mesh(treadGeometry,rubber);
+          tread.position.set(Math.cos(angle)*this.radius,Math.sin(angle)*this.radius,0);tread.rotation.z=angle-Math.PI/2;wheel.add(tread);
+        }
       }
       this.object.add(wheel);this.wheels.set(name,wheel);
     }
@@ -102,7 +112,7 @@ export class MecanumVisual implements MechanismVisual {
     const delta=this.heading-this.object.rotation.y;
     this.object.rotation.y+=Math.atan2(Math.sin(delta),Math.cos(delta))*blend;
     for (const [name,wheel] of this.wheels) {
-      const speed=this.speeds[name];
+      const speed=this.speeds[name]??(this.kind==='tank'?this.speeds[name.includes('left')?'left':'right']:undefined);
       if (Number.isFinite(speed)) wheel.rotation.z=(wheel.rotation.z+speed/1000/this.radius*dt)%(Math.PI*2);
     }
   }

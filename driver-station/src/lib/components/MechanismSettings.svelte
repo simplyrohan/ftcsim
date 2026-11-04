@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isDrivetrain } from '$lib/model/mechanism-types';
   import { Plus, Check, LoaderCircle, Layers, Pencil, Trash2, Box, Search } from '@lucide/svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -24,7 +25,7 @@
     {@const schema=mechanisms.catalog.find(item=>item.type===definition.type)}
     <Collapsible.Root open={editing===definition} onOpenChange={open=>editing=open?definition:undefined} class="editor-card mechanism-card">
       <div class="configuration-row">
-        <span class="configuration-icon">{#if definition.type==='mecanum'}<Layers size={17} strokeWidth={1.5}/>{:else}<Box size={17} strokeWidth={1.5}/>{/if}</span>
+        <span class="configuration-icon">{#if isDrivetrain(definition.type)}<Layers size={17} strokeWidth={1.5}/>{:else}<Box size={17} strokeWidth={1.5}/>{/if}</span>
         <div class="configuration-identity"><h3>{definition.name}</h3><p>{schema?.label??definition.type}<span class="summary-divider">·</span>{definition.type==='custom'?definition.drivers.actuator||'Static model':`${Object.values(definition.drivers).filter(Boolean).length} driver connections`}</p></div>
         <span class="configuration-meta">{definition.visual?.parent?`On ${definition.visual.parent}`:'World origin'}</span>
         <div class="configuration-actions">

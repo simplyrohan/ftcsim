@@ -11,7 +11,7 @@ export function modelPath(path:unknown):path is string{return typeof path==='str
 
 /** Inspect ZIP metadata before allocating or decompressing any model data. */
 export async function decodeRobotArchive(data:Uint8Array) {
-  if(data.byteLength>MAX_ROBOT_BYTES)throw Error('Robot archives must be at most 64 MB.');
+  if(data.byteLength>MAX_ROBOT_BYTES)throw Error('Robot archives must be at most 512 MB.');
   if(data.byteLength<22 || data[0]!==0x50 || data[1]!==0x4b)throw Error('Expected an .fs robot archive (a ZIP containing robot.json and models).');
   const entries=new Map<string,UnzipFileInfo>();let total=0;
   await expand(data,file=>{
@@ -19,7 +19,7 @@ export async function decodeRobotArchive(data:Uint8Array) {
     entries.set(file.name,file);total+=file.originalSize;
     if(entries.size>130 || total>MAX_ROBOT_BYTES)throw Error('The expanded robot archive exceeds its size or file-count limit.');
     if(file.name===ROBOT_CONFIG_PATH && file.originalSize>MAX_CONFIG_BYTES)throw Error('robot.json must be at most 1 MB.');
-    if(modelPath(file.name) && file.originalSize>MAX_MODEL_BYTES)throw Error('GLB models may be at most 20 MB.');
+    if(modelPath(file.name) && file.originalSize>MAX_MODEL_BYTES)throw Error('GLB models may be at most 200 MB.');
     if(![0,8].includes(file.compression) || file.size>data.byteLength || file.compression===0&&file.size!==file.originalSize)throw Error('Unsupported or damaged ZIP entry.');
     return false;
   });
@@ -39,11 +39,11 @@ export async function encodeRobotArchive(record:object,models:Map<string,ArrayBu
   for(const [path,model] of models){
     if(!modelPath(path) || model.byteLength>MAX_MODEL_BYTES)throw Error('Invalid robot model file.');
     total+=model.byteLength;
-    if(total>MAX_ROBOT_BYTES)throw Error('The combined robot configuration and models exceed 64 MB.');
+    if(total>MAX_ROBOT_BYTES)throw Error('The combined robot configuration and models exceed 512 MB.');
     // GLBs commonly contain compressed textures. Store their original bytes intact.
     files[path]=[new Uint8Array(model),{level:0}];
   }
   const archive=await new Promise<Uint8Array<ArrayBuffer>>((resolve,reject)=>zip(files,{level:1},(error,bytes)=>error?reject(error):resolve(bytes)));
-  if(archive.byteLength>MAX_ROBOT_BYTES)throw Error('The robot archive exceeds 64 MB. Use smaller models.');
+  if(archive.byteLength>MAX_ROBOT_BYTES)throw Error('The robot archive exceeds 512 MB. Use smaller models.');
   return archive;
 }

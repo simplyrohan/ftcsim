@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isDrivetrain } from '$lib/model/mechanism-types';
   import { onDestroy } from 'svelte';
   import { Upload, Trash2, LoaderCircle, Box } from '@lucide/svelte';
   import { Button } from '$lib/components/ui/button';
@@ -22,9 +23,9 @@
   async function upload(file:File) {
     if(uploading || disabled)return;uploading=true;message='';
     try {
-      if(file.size>MAX_MODEL_BYTES)throw Error('Choose a GLB smaller than 20 MB.');
+      if(file.size>MAX_MODEL_BYTES)throw Error('Choose a GLB no larger than 200 MB.');
       const data=await readBinaryFile(file);
-      const [{parseModel},{disposeObject}]=await Promise.all([import('$lib/scene/models'),import('$lib/scene/mecanum')]);
+      const [{parseModel},{disposeObject}]=await Promise.all([import('$lib/scene/models'),import('$lib/scene/drivetrain')]);
       const object=await parseModel(data);disposeObject(object);
       if(disposed)return;
       const previous=definition.visual?.model;
@@ -41,14 +42,14 @@
     const model=definition.visual?.model;
     const allowed=()=>!disposed&&!disabled&&!!model&&definition.visual?.model===model;
     if(!allowed())return;
-    if(!await confirmation.ask({title:'Remove mechanism model?',description:`Remove “${model!.name}” from “${definition.name}”.`,action:'Remove model',details:[definition.type==='mecanum'?'The built-in mecanum visual will be used.':'The mechanism will show its origin marker.','Position, orientation, and motion settings are kept. The change saves immediately.'],allowed})||!allowed())return;
+    if(!await confirmation.ask({title:'Remove mechanism model?',description:`Remove “${model!.name}” from “${definition.name}”.`,action:'Remove model',details:[isDrivetrain(definition.type)?'The built-in drivebase visual will be used.':'The mechanism will show its origin marker.','Position, orientation, and motion settings are kept. The change saves immediately.'],allowed})||!allowed())return;
     delete definition.visual!.model;onchange();message='';
   }
 </script>
 <section class="mechanism-section">
   <div class="mechanism-section-title"><span class="step-number">01</span><h3>Model <HelpTooltip label="About mechanism models" text="Upload a GLB with its origin at the intended pivot. Models are saved in this browser and included in robot exports; they change the visual only."/></h3></div>
   <div class="model-upload">
-    <Box size={24} strokeWidth={1}/><div class="model-file-name"><strong>{definition.visual?.model?.name ?? (definition.type==='mecanum'?'Built-in mecanum model':'Origin marker')}</strong></div>
+    <Box size={24} strokeWidth={1}/><div class="model-file-name"><strong>{definition.visual?.model?.name ?? (isDrivetrain(definition.type)?'Built-in drivebase model':'Origin marker')}</strong></div>
     <label class="file-button">{#if uploading}<LoaderCircle size={13} class="animate-spin"/>{:else}<Upload size={13}/>{/if}<span>{uploading?'Loading…':definition.visual?.model?'Replace':'Upload GLB'}</span><input bind:this={input} type="file" accept=".glb,model/gltf-binary" aria-label={`Upload GLB for ${definition.name}`} disabled={disabled||uploading} onclick={()=>input.value=''} onchange={()=>{const file=input.files?.[0];if(file)void upload(file);}}/></label>
     {#if definition.visual?.model}<Button variant="ghost" type="button" size="icon" aria-label="Remove uploaded model" disabled={disabled||uploading} onclick={removeModel}><Trash2 size={13}/></Button>{/if}
   </div>
@@ -57,7 +58,7 @@
 </section>
 <section class="mechanism-section">
   <div class="mechanism-section-title"><span class="step-number">02</span><h3>Origin &amp; placement <HelpTooltip label="About model placement" text="Offsets follow the selected mechanism’s moving origin. X is forward, Y is left, Z is up. Motion happens at the uploaded model’s origin after this starting pose. Model scale does not scale movement distance."/></h3></div>
-  <label class="field"><span>Attach to origin</span><SelectField aria-label="Attach to origin" value={definition.visual?.parent??''} {disabled} items={[{value:'',label:'World origin · fixed'},...definitions.filter(item=>item!==definition).map(parent=>({value:parent.name,label:`${parent.name} · ${parent.type==='mecanum'?'robot origin':'moving origin'}`,disabled:!possibleParent(parent.name)}))]} onValueChange={next=>{(definition.visual??={}).parent=next;onchange();}}/></label>
+  <label class="field"><span>Attach to origin</span><SelectField aria-label="Attach to origin" value={definition.visual?.parent??''} {disabled} items={[{value:'',label:'World origin · fixed'},...definitions.filter(item=>item!==definition).map(parent=>({value:parent.name,label:`${parent.name} · ${isDrivetrain(parent.type)?'robot origin':'moving origin'}`,disabled:!possibleParent(parent.name)}))]} onValueChange={next=>{(definition.visual??={}).parent=next;onchange();}}/></label>
   <div class="vector-field"><span class="eyebrow">Starting position · mm</span><div class="vector-inputs">{#each ['X · forward','Y · left','Z · up'] as label,index}<label class="field"><span>{label}</span><Input type="number" step="any" value={definition.visual?.position?.[index]??0} {disabled} oninput={event=>update('position',index,event.currentTarget.value)}/></label>{/each}</div></div>
   <div class="vector-field"><span class="eyebrow">Starting orientation · degrees</span><div class="vector-inputs">{#each ['Roll · X','Pitch · Y','Yaw · Z'] as label,index}<label class="field"><span>{label}</span><Input type="number" step="any" value={definition.visual?.rotation?.[index]??0} {disabled} oninput={event=>update('rotation',index,event.currentTarget.value)}/></label>{/each}</div></div>
 </section>

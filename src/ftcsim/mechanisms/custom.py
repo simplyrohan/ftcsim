@@ -1,20 +1,20 @@
 """Read-only actuator followers for user-supplied visual models."""
 from .base import Mechanism
-from ..drivers import DCMotor, Servo
+from ..drivers import DCMotor, Servo, CRServo
 from ..drivers.base import number
 
 
 class CustomMechanism(Mechanism):
     kind = 'custom'
     display_name = 'Custom mechanism'
-    description = 'Visual actuator follower. Reads a motor or servo without driving hardware or sensors.'
+    description = 'Visual actuator follower. Motors and CR servos supply shaft revolutions; positional servos supply 0–1 position.'
     exclusive = False
-    driver_slots = {'actuator': {'label': 'Motor or servo', 'driver': (DCMotor, Servo), 'required': False}}
+    driver_slots = {'actuator': {'label': 'Motor or servo', 'driver': (DCMotor, Servo, CRServo), 'required': False}}
     option_metadata = {
         'motion': {'label': 'Movement', 'choices': [{'value': 'rotation', 'label': 'Rotation'}, {'value': 'translation', 'label': 'Translation'}]},
         'axis': {'label': 'Local motion axis', 'choices': [{'value': 'x', 'label': 'X · forward'}, {'value': 'y', 'label': 'Y · left'}, {'value': 'z', 'label': 'Z · up'}]},
         'direction': {'label': 'Direction', 'choices': [{'value': 1, 'label': 'Forward'}, {'value': -1, 'label': 'Reversed'}]},
-        'travel': {'label': 'Travel per motor revolution / full servo range', 'min': 0},
+        'travel': {'label': 'Travel per shaft revolution / full positional servo range', 'min': 0},
         'input_zero': {'label': 'Input at starting pose'},
     }
 

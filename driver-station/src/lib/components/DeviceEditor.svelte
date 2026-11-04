@@ -10,7 +10,7 @@
   import type { Device } from '$lib/model/types';
   import type { HardwareConfiguration } from '$lib/model/hardware.svelte';
   let { device=$bindable(), hardware, parent, expanded=$bindable(false) }: {device:Device;hardware:HardwareConfiguration;parent?:Device;expanded?:boolean} = $props();
-  const Icon = $derived(device.type==='motor'||device.type==='servo'?RotateCw:device.type==='odometry'?Gauge:device.type==='pinpoint'?Compass:Cpu);
+  const Icon = $derived(device.type==='motor'||device.type==='servo'||device.type==='cr_servo'?RotateCw:device.type==='odometry'?Gauge:device.type==='pinpoint'?Compass:Cpu);
   const schema = $derived(hardware.catalog.find(item=>item.type===device.type));
   const preset = $derived(schema?.presets?.find(item=>Object.entries(item.options).every(([key,value])=>{const actual=optionValue(device.options,schema.options.find(option=>option.name===key)!);return typeof actual==='number'&&Math.abs(actual-Number(value))<1e-6;}))?.id ?? '');
 </script>

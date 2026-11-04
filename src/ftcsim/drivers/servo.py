@@ -28,10 +28,14 @@ class Servo(Driver):
     def enabled(self):
         return bool(self.register('ServoEnable')[0])
 
+    @property
+    def normalized_pulse(self):
+        pulse, = struct.unpack('<H', self.register('ServoPulseWidth'))
+        return max(0, min(1, (pulse - self.minimum) / (self.maximum - self.minimum)))
+
     def step(self, dt, motion):
         if self.enabled:
-            pulse, = struct.unpack('<H', self.register('ServoPulseWidth'))
-            self.position = max(0, min(1, (pulse - self.minimum) / (self.maximum - self.minimum)))
+            self.position = self.normalized_pulse
 
     def handle_lynx(self, name, data):
         for suffix, (width, _) in self.REGISTERS.items():

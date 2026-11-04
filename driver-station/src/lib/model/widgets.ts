@@ -14,7 +14,12 @@ class MotorPresenter extends EncoderPresenter {
 }
 class ServoPresenter extends DriverPresenter {
   label = 'Servo';
-  rows(state:Options):Row[] { return [['Output',state.enabled?'PWM enabled':'PWM disabled'],['Position',`${format(state.position*100,1)}%`],['Pulse width',`${format(state.pulse_us,0)} µs`],['PWM period',`${format(state.period_us,0)} µs`]]; }
+  protected positionRows(state:Options):Row[] { return [['Position',`${format(state.position*100,1)}%`]]; }
+  rows(state:Options):Row[] { return [['Output',state.enabled?'PWM enabled':'PWM disabled'],...this.positionRows(state),['Pulse width',`${format(state.pulse_us,0)} µs`],['PWM period',`${format(state.period_us,0)} µs`]]; }
+}
+class CRServoPresenter extends ServoPresenter {
+  label = 'CR servo';
+  protected positionRows(state:Options):Row[] { return [['Power',`${format(state.power*100,1)}%`],['Shaft speed',`${format(state.shaft_rpm,1)} RPM`],['Shaft position',`${format(state.position,3)} rev`],['Maximum RPM',format(state.max_rpm,0)],['Direction',state.direction===-1?'Reversed':'Forward']]; }
 }
 class OdometryPresenter extends EncoderPresenter {
   label = 'Odometry pod';
@@ -24,5 +29,5 @@ class PinpointPresenter extends DriverPresenter {
   label = 'goBILDA Pinpoint';
   rows(state:Options):Row[] { const status:Record<number,string>={1:'Ready',2:'Calibrating',4:'X pod missing',8:'Y pod missing',12:'Both pods missing'};return [['Status',status[state.status]??String(state.status)],['I²C address',`0x${Number(state.address).toString(16)}`],['X / Y',`${format(state.x_mm)} / ${format(state.y_mm)} mm`],['Heading',`${format(state.heading_rad*180/Math.PI)}°`],['Velocity X / Y',`${format(state.vx_mm_s)} / ${format(state.vy_mm_s)} mm/s`],['Yaw rate',`${format(state.yaw_rate_rad_s*180/Math.PI)}°/s`]]; }
 }
-export const driverWidgets = new Map<string,DriverPresenter>([['motor',new MotorPresenter()],['servo',new ServoPresenter()],['odometry',new OdometryPresenter()],['pinpoint',new PinpointPresenter()]]);
+export const driverWidgets = new Map<string,DriverPresenter>([['motor',new MotorPresenter()],['servo',new ServoPresenter()],['cr_servo',new CRServoPresenter()],['odometry',new OdometryPresenter()],['pinpoint',new PinpointPresenter()]]);
 export const fallbackWidget = new DriverPresenter();

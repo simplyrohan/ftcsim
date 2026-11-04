@@ -1,3 +1,4 @@
+import { isDrivetrain } from '$lib/model/mechanism-types';
 import type { ViewportStats } from '$lib/model/diagnostics.svelte';
 import { UploadedVisual } from './models';
 import { loadField } from './field';
@@ -5,11 +6,12 @@ import { ViewerColorGrade } from './color-grade';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { MecanumVisual, disposeObject, type MechanismVisual } from './mecanum';
+import { DrivebaseVisual, disposeObject, type MechanismVisual } from './drivetrain';
 import type { Mechanism, MechanismState, Options } from '$lib/model/types';
 
 const mechanismVisuals = new Map<string,(options:Options)=>MechanismVisual>([
-  ['mecanum',options=>new MecanumVisual(options)],
+  ['mecanum',options=>new DrivebaseVisual(options)],
+  ['tank',options=>new DrivebaseVisual(options,'tank')],
 ]);
 export type CameraView = 'perspective'|'top';
 
@@ -56,7 +58,7 @@ export class DrivebaseViewport {
     this.renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,powerPreference:'high-performance'});
     this.renderer.setClearColor(0x000000,0);
     this.renderer.toneMapping=THREE.NeutralToneMapping;
-    this.renderer.toneMappingExposure=1;
+    this.renderer.toneMappingExposure=.72;
     // Neutral tone mapping retains saturated colors; reflections reveal dark metal.
     const room=new RoomEnvironment(),pmrem=new THREE.PMREMGenerator(this.renderer);
     this.environment=pmrem.fromScene(room,.04);room.dispose();pmrem.dispose();
@@ -66,11 +68,11 @@ export class DrivebaseViewport {
     this.colorGrade=new ViewerColorGrade(this.renderer);
     this.renderer.info.autoReset=false;
     this.scene.fog=new THREE.Fog(0x0c0d0d,5,17);
-    // Off-axis lighting and weak fill preserve contrast.
-    const key=new THREE.DirectionalLight(0xffffff,2.5);
-    key.position.set(1.4,1.8,1);key.target.position.set(0,0,-1);
-    this.camera.add(key,key.target);this.scene.add(this.camera);
-    this.scene.add(new THREE.AmbientLight(0xffffff,.12));
+    // World-space lighting keeps surface illumination stable while orbiting.
+    const key=new THREE.DirectionalLight(0xffffff,2.2);
+    key.position.set(-3,6,4);
+    this.scene.add(key,key.target,this.camera);
+    this.scene.add(new THREE.HemisphereLight(0xffffff,0x535353,.18));
     for (const [divisions,opacity] of [[160,.32],[40,.26]]) {
       const grid=new THREE.GridHelper(40,divisions,0x545461,0x393941);
       const materials=Array.isArray(grid.material)?grid.material:[grid.material];
@@ -107,7 +109,7 @@ export class DrivebaseViewport {
       const uploaded=mechanism.type==='custom'||!!definition.visual;
       const options=definition.options??{};
       // Geometry changes need rebuilding only for the procedural drivetrain.
-      const geometry=mechanism.type==='mecanum'&&!definition.visual?.model?[options.wheelbase_mm,options.track_width_mm,options.wheel_diameter_mm]:null;
+      const geometry=isDrivetrain(mechanism.type)&&!definition.visual?.model?[options.wheelbase_mm,options.track_width_mm,options.wheel_diameter_mm]:null;
       return {mechanism,definition,uploaded,signature:JSON.stringify([mechanism.type,uploaded,definition.visual?.model?.id,geometry]),configuration:JSON.stringify([options,definition.visual])};
     });
     const rebuilding=plans.some(plan=>this.models.get(plan.mechanism.name)?.signature!==plan.signature)||[...this.models.keys()].some(name=>!present.has(name));

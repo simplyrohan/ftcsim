@@ -26,7 +26,7 @@
       {#if mechanisms.length>1}<SelectField id="scene-mechanism" aria-label="Viewed mechanism" class="scene-mechanism-select" items={mechanisms.map(mechanism=>({value:mechanism.name,label:mechanism.name}))} value={active?.name??''} onValueChange={next=>selected=next}/>
       {:else}<h3>{active?.name ?? 'Drivebase'}</h3>{/if}
     </div></div>
-    {#if active}<MechanismView mechanism={active}/>{:else}<div class="scene-empty-state"><p>Add a mecanum drivetrain to see your robot move.</p><Button variant="outline" size="sm" onclick={()=>onsettings('mechanisms')}>Configure mechanism</Button></div>{/if}
+    {#if active}<MechanismView mechanism={active}/>{:else}<div class="scene-empty-state"><p>Add a drivetrain to see your robot move.</p><Button variant="outline" size="sm" onclick={()=>onsettings('mechanisms')}>Configure mechanism</Button></div>{/if}
   </section>
   <div class="scene-instrument-switch" role="group" aria-label="Overview overlays">
     <Button variant="outline" size="sm" aria-label="Telemetry" title="Toggle telemetry overlay" aria-controls="overview-telemetry" aria-expanded={instrument==='telemetry'} aria-pressed={instrument==='telemetry'} onclick={()=>toggle('telemetry')}><Terminal size={14}/><span class="scene-instrument-label">Telemetry</span></Button>

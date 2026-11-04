@@ -3,6 +3,7 @@ import inspect
 from .base import Driver
 from .motor import DCMotor
 from .servo import Servo
+from .cr_servo import CRServo
 from .odometry import OdometryPod
 from .pinpoint import GoBildaPinpoint
 
@@ -79,5 +80,5 @@ class DriverRegistry:
 
 
 DRIVERS = DriverRegistry()
-for driver in (DCMotor, Servo, OdometryPod, GoBildaPinpoint):
+for driver in (DCMotor, Servo, CRServo, OdometryPod, GoBildaPinpoint):
     DRIVERS.register(driver)

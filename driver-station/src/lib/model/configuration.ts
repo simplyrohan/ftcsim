@@ -41,7 +41,7 @@ export function hardwareError(devices:Device[], catalog:DriverType[]):string {
     }
     const error = optionError(device.options, schema.options);
     if (error) return `${device.name}: ${error}`;
-    if (device.type === 'servo' && (device.options?.max_pulse_us ?? 2500) <= (device.options?.min_pulse_us ?? 500)) return `${device.name}: maximum pulse must exceed minimum pulse.`;
+    if (schema.connection === 'servo' && (device.options?.max_pulse_us ?? schema.options.find(option=>option.name==='max_pulse_us')?.default) <= (device.options?.min_pulse_us ?? schema.options.find(option=>option.name==='min_pulse_us')?.default)) return `${device.name}: maximum pulse must exceed minimum pulse.`;
     const childPorts = new Set();
     for (const child of device.children ?? []) {
       if (childPorts.has(child.port)) return `${device.name}: duplicate child input ${child.port}.`;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isDrivetrain } from '$lib/model/mechanism-types';
   import RobotViewport from './RobotViewport.svelte';
   import HelpTooltip from './HelpTooltip.svelte';
   import { Switch } from '$lib/components/ui/switch';
@@ -18,7 +19,7 @@
   const states=$derived.by(()=>{
     const devices=flatten(station.physical?.devices??[]);
     return definitions.map(item=>{
-      if(item.type==='mecanum')return {name:item.name,type:item.type,drivers:item.drivers,state:{pose:{x_mm:0,y_mm:0,heading_rad:0},wheel_speeds_mm_s:{}}};
+      if(isDrivetrain(item.type))return {name:item.name,type:item.type,drivers:item.drivers,state:{pose:{x_mm:0,y_mm:0,heading_rad:0},wheel_speeds_mm_s:{}}};
       const source=devices.find(device=>device.name===item.drivers.actuator);
       const position=item===definition&&preview?input:source?.type==='motor'?source.state.position/source.state.ticks_per_revolution*(source.state.direction??1):source?.state.position??item.options?.input_zero??0;
       return {name:item.name,type:item.type,drivers:item.drivers,state:{displacement:(position-(item.options?.input_zero??0))*(item.options?.travel??360)*(item.options?.direction??1)}};
@@ -28,5 +29,5 @@
 <aside class="mechanism-preview">
   <div class="mechanism-preview-heading"><span class="eyebrow">Live preview</span><span>Draft · not applied</span></div>
   <div class="mechanism-preview-canvas"><RobotViewport {active} preview diagnostics={station.diagnostics} label="Mechanism preview" showOrigins mechanisms={states} {definitions} selected={definition.name}/></div>
-  {#if definition.type==='custom'}<div class="mechanism-preview-controls"><div class="label-with-help"><label class="preview-toggle"><Switch bind:checked={preview} size="sm" aria-label="Test input manually"/>Test input manually</label><HelpTooltip label="About manual preview input" text="The preview follows live actuator state. Enable manual input to test your draft without running robot code."/></div>{#if preview}<label class="field"><span>{actuator?.type==='servo'?'Servo position':'Motor revolutions'}<output>{format(input,2)}</output></span><input type="range" aria-label="Preview actuator position" min={actuator?.type==='servo'?0:-1} max="1" step="0.005" bind:value={input}/></label>{/if}</div>{/if}
+  {#if definition.type==='custom'}<div class="mechanism-preview-controls"><div class="label-with-help"><label class="preview-toggle"><Switch bind:checked={preview} size="sm" aria-label="Test input manually"/>Test input manually</label><HelpTooltip label="About manual preview input" text="The preview follows live actuator state. Enable manual input to test your draft without running robot code."/></div>{#if preview}<label class="field"><span>{actuator?.type==='servo'?'Servo position':'Shaft revolutions'}<output>{format(input,2)}</output></span><input type="range" aria-label="Preview actuator position" min={actuator?.type==='servo'?0:-1} max="1" step="0.005" bind:value={input}/></label>{/if}</div>{/if}
 </aside>

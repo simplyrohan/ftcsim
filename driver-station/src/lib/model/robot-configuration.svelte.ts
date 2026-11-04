@@ -23,7 +23,7 @@ export class RobotConfigurationFile {
   }
   private async importRecord(text:string, label:string, archiveAssets?:Map<string,ArrayBuffer>) {
     if (this.station.hardware.busy || this.station.mechanisms.busy) throw Error('Wait for configuration changes to finish applying.');
-    if (new TextEncoder().encode(text).length > MAX_ROBOT_BYTES) throw Error('Robot configuration files must be smaller than 64 MB.');
+    if (new TextEncoder().encode(text).length > MAX_ROBOT_BYTES) throw Error('Robot configuration files must be smaller than 512 MB.');
     const record = JSON.parse(text);
     if (!record || record.format !== ROBOT_CONFIGURATION_FORMAT || record.version !== (archiveAssets?2:1) || !Array.isArray(record.mechanisms)) throw Error('Expected an ftcsim robot configuration with devices and mechanisms. Load .fs files using Load robot.');
     if (Object.keys(record).some(key=>!['format','version','devices','mechanisms','notes','assets'].includes(key))) throw Error('Unknown robot configuration fields.');
@@ -70,7 +70,7 @@ export class RobotConfigurationFile {
     this.importing = true;
     const endpoint = this.station.endpoint;
     try {
-      if (file.size > MAX_ROBOT_BYTES) throw Error('Robot configuration files must be smaller than 64 MB.');
+      if (file.size > MAX_ROBOT_BYTES) throw Error('Robot configuration files must be smaller than 512 MB.');
       if(file.name.toLowerCase().endsWith('.json')){
         const text=String(await readHardwareFile(file));
         if(endpoint!==this.station.endpoint)return;
