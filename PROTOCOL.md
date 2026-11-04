@@ -96,9 +96,10 @@ Requests are limited to 65,536 Java string characters; the command queue holds
 | `robocol` | `kind` and base64 `payload` for other serialized SDK data. |
 | `ack` / `error` | `message` and optional echoed `id`. |
 
-The hardware map lasts for the SDK process lifetime. Explicitly configuring an
-empty map sets `hardwareConfigured: true`. Mechanisms and visual model metadata
-are never sent to the SDK.
+The hardware map starts empty and lasts for the SDK process lifetime. INIT and
+START do not require configuration; missing devices fail when TeamCode looks
+them up. Explicitly configuring an empty map sets `hardwareConfigured: true`.
+Mechanisms and visual model metadata are never sent to the SDK.
 
 ## Driver Station ⇄ simulator
 
